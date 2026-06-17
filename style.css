@@ -41,6 +41,7 @@ header {
 
 header h1 { font-size: 1.3rem; font-weight: 800; }
 .date-display { font-size: 0.9rem; color: var(--text-muted); }
+.section-desc { font-size: 0.75rem; color: var(--text-muted); margin: -4px 0 8px 4px; }
 
 /* 通知欄スタイル */
 .notification-box {
@@ -70,20 +71,42 @@ header h1 { font-size: 1.3rem; font-weight: 800; }
 .section-title { font-size: 0.95rem; font-weight: 700; margin: 20px 0 8px 4px; color: var(--text-main); }
 .card { background: var(--card-bg); border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
 
-/* 4つの1タップボタン用グリッド */
+/* 残高・カード調整ボックス用 */
+.asset-adjust-box {
+    margin-bottom: 14px;
+}
+.asset-adjust-box:last-child { margin-bottom: 0; }
+.asset-info { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.asset-info .name { font-size: 0.85rem; font-weight: 600; color: var(--text-main); }
+.asset-info .val { font-size: 0.95rem; font-weight: 700; color: var(--primary); }
+.adjust-input-group { display: flex; gap: 6px; }
+.adjust-input-group input { flex: 1; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.85rem; }
+
+/* 予測リストの月別区切りヘッダー */
+.month-group-header {
+    background-color: #edf2f7;
+    color: var(--text-main);
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin: 14px 0 6px 0;
+    border-left: 4px solid var(--primary);
+}
+
+/* クイック出費 4ボタン */
 .button-grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
 .btn { background-color: var(--primary); color: white; border: none; border-radius: 8px; padding: 12px; font-weight: 600; font-size: 0.95rem; cursor: pointer; text-align: center; }
 .btn-pay { background-color: #edf2f7; color: var(--text-main); border: 1px solid #cbd5e0; }
 .btn-pay:active { background-color: #e2e8f0; }
-
 .btn-success { background-color: var(--success); }
 .btn-sm { padding: 6px 10px; font-size: 0.8rem; border-radius: 6px; }
 
 .input-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
 .input-group label { font-size: 0.85rem; color: var(--text-muted); }
-.input-group input, .input-group select { width: 140px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; text-align: right; }
+.input-group input { width: 140px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; text-align: right; }
 
-/* 1タップ切り替えトグルボタン */
+/* トグルボタン */
 .toggle-buttons { display: flex; gap: 4px; width: 140px; }
 .toggle-buttons-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; width: 160px; }
 .btn-toggle { flex: 1; padding: 6px; font-size: 0.8rem; border: 1px solid var(--border-color); background: #fff; border-radius: 6px; cursor: pointer; font-weight: 600; color: var(--text-muted); }
@@ -91,17 +114,17 @@ header h1 { font-size: 1.3rem; font-weight: 800; }
 #btn-type-income.active { background: var(--success); border-color: var(--success); }
 #btn-type-expense.active { background: var(--danger); border-color: var(--danger); }
 
-/* リストアイテム */
-.plan-item, .fixed-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+/* アイテム行 */
+.plan-item, .fixed-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--border-color); }
 .plan-item:last-child, .fixed-item:last-child { border-bottom: none; }
-.plan-info .name, .fixed-item .name { font-size: 0.9rem; font-weight: 600; }
+.plan-info .name, .fixed-item .name { font-size: 0.85rem; font-weight: 600; }
 .plan-info .details { font-size: 0.75rem; color: var(--text-muted); }
-.plan-action { display: flex; align-items: center; gap: 6px; }
-.plan-amount { font-weight: 700; font-size: 0.9rem; }
+.plan-action { display: flex; align-items: center; gap: 4px; }
+.plan-amount { font-weight: 700; font-size: 0.85rem; margin-right: 4px; }
 .plan-amount.income { color: var(--success); }
 .plan-amount.expense { color: var(--danger); }
 
-/* カレンダー専用スタイル */
+/* カレンダー */
 .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 700; }
 .calendar-header button { background: none; border: none; font-size: 1rem; cursor: pointer; padding: 4px 10px; }
 .calendar-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }

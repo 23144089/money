@@ -54,36 +54,46 @@
         </div>
 
         <div id="page-wallet" class="app-page">
-            <div class="section-title">現在の財布の残高</div>
+            <div class="section-title">💰 現在の財布残高の確認・差額調整</div>
+            <p class="section-desc">実際の金額を入力して「調整」を押すと、自動で差額を計算して履歴に記録します。</p>
             <div class="card">
-                <div class="input-group"><label>銀行残高（デビット連動）</label><input type="number" id="asset-bank" onchange="updateWalletData()"></div>
-                <div class="input-group"><label>現金手元</label><input type="number" id="asset-cash" onchange="updateWalletData()"></div>
-                <div class="input-group"><label>PayPay残高</label><input type="number" id="asset-paypay" onchange="updateWalletData()"></div>
-                <div class="input-group"><label>隠し金</label><input type="number" id="asset-hidden" onchange="updateWalletData()"></div>
-            </div>
-
-            <div class="section-title">💳 カード請求額の自動調整</div>
-            <div class="card">
-                <div class="card-pay-date" id="card-payment-label" style="font-weight:700; color:var(--danger); margin-bottom:8px; font-size:0.9rem;">--月27日支払い分</div>
-                <div class="input-group">
-                    <label>アプリ上の計算値</label>
-                    <span id="card-calc-amount" style="font-weight:700;">¥0</span>
+                <div class="asset-adjust-box">
+                    <div class="asset-info"><span class="name">🏦 銀行残高（デビット連動）</span><span class="val" id="calc-val-bank">¥0</span></div>
+                    <div class="adjust-input-group"><input type="number" id="actual-bank" placeholder="実際の銀行残高"><button class="btn btn-sm" onclick="adjustAssetAmount('bank')">調整</button></div>
                 </div>
-                <div style="margin-top:10px; border-top:1px solid #e2e8f0; padding-top:10px;">
-                    <div class="label" style="font-size:0.8rem; color:var(--text-muted); margin-bottom:4px;">実際の明細上の請求額を入力して調整：</div>
-                    <div style="display:flex; gap:8px;">
-                        <input type="number" id="actual-card-input" placeholder="実際の請求額" style="flex:1; padding:6px; border-radius:6px; border:1px solid #e2e8f0;">
-                        <button class="btn btn-sm btn-success" onclick="adjustCardAmount()">請求額を確定・差額記録</button>
-                    </div>
+                <div class="asset-adjust-box">
+                    <div class="asset-info"><span class="name">💵 現金手元</span><span class="val" id="calc-val-cash">¥0</span></div>
+                    <div class="adjust-input-group"><input type="number" id="actual-cash" placeholder="実際の現金"><button class="btn btn-sm" onclick="adjustAssetAmount('cash')">調整</button></div>
+                </div>
+                <div class="asset-adjust-box">
+                    <div class="asset-info"><span class="name">📱 PayPay残高</span><span class="val" id="calc-val-paypay">¥0</span></div>
+                    <div class="adjust-input-group"><input type="number" id="actual-paypay" placeholder="実際のPayPay"><button class="btn btn-sm" onclick="adjustAssetAmount('paypay')">調整</button></div>
+                </div>
+                <div class="asset-adjust-box">
+                    <div class="asset-info"><span class="name">🪙 隠し金</span><span class="val" id="calc-val-hidden">¥0</span></div>
+                    <div class="adjust-input-group"><input type="number" id="actual-hidden" placeholder="実際の隠し金"><button class="btn btn-sm" onclick="adjustAssetAmount('hidden')">調整</button></div>
                 </div>
             </div>
 
-            <div class="section-title">毎月の固定費（随時追加可能）</div>
+            <div class="section-title">💳 クレジットカード請求額（今月・来月）</div>
             <div class="card">
-                <div style="display:flex; gap:8px; margin-bottom:12px;">
-                    <input type="text" id="new-fixed-name" placeholder="項目名 (例: Adobe)" style="flex:1; padding:6px; border-radius:6px; border:1px solid #e2e8f0;">
-                    <input type="number" id="new-fixed-amount" placeholder="金額" style="width:100px; padding:6px; border-radius:6px; border:1px solid #e2e8f0;">
-                    <button class="btn btn-sm" onclick="addFixedCost()">追加</button>
+                <div class="asset-adjust-box" style="border-bottom: 1px solid var(--border-color); padding-bottom: 12px; margin-bottom: 12px;">
+                    <div class="asset-info"><span class="name" id="card-label-current" style="color:var(--danger); font-weight:700;">--月27日払い(今月分)</span><span class="val" id="card-calc-current">¥0</span></div>
+                    <div class="adjust-input-group"><input type="number" id="actual-card-current" placeholder="明細の確定請求額"><button class="btn btn-sm btn-success" onclick="adjustCardAmount('current')">金額確定・差額記録</button></div>
+                </div>
+                <div class="asset-adjust-box">
+                    <div class="asset-info"><span class="name" id="card-label-next" style="color:var(--primary); font-weight:700;">--月27日払い(来月分)</span><span class="val" id="card-calc-next">¥0</span></div>
+                    <div class="adjust-input-group"><input type="number" id="actual-card-next" placeholder="明細の確定請求額"><button class="btn btn-sm btn-success" onclick="adjustCardAmount('next')">金額確定・差額記録</button></div>
+                </div>
+            </div>
+
+            <div class="section-title">🛠️ 毎月の固定費マスタ（自動予測のひな形）</div>
+            <div class="card">
+                <div style="display:grid; grid-template-columns: 1fr 80px 80px auto; gap: 4px; margin-bottom:12px;">
+                    <input type="text" id="new-fixed-name" placeholder="項目名" style="padding:6px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.8rem;">
+                    <input type="number" id="new-fixed-amount" placeholder="金額" style="padding:6px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.8rem;">
+                    <input type="number" id="new-fixed-day" placeholder="請求日(日)" min="1" max="31" style="padding:6px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.8rem;">
+                    <button class="btn btn-sm" onclick="addFixedCostMaster()" style="padding:6px;">追加</button>
                 </div>
                 <div id="fixed-costs-list"></div>
             </div>
@@ -103,7 +113,7 @@
                     </div>
                 </div>
                 
-                <div class="input-group"><label>予定日（一番大事）</label><input type="date" id="plan-date"></div>
+                <div class="input-group"><label>予定日</label><input type="date" id="plan-date"></div>
                 <div class="input-group"><label>予想金額</label><input type="number" id="plan-amount-input" placeholder="円"></div>
                 
                 <div class="input-group">
@@ -122,8 +132,9 @@
                 </div>
             </div>
 
-            <div class="section-title">未来の予測リスト（帳尻合わせ用）</div>
-            <div class="card" id="plans-list-container"></div>
+            <div class="section-title">⚖️ 未来の予測・固定費リスト（月別表示）</div>
+            <p class="section-desc">固定費も自動展開されます。月別の金額調整(編)や削除(削)が可能です。</p>
+            <div id="plans-list-container"></div>
 
             <div id="adjust-panel" class="adjustment-box">
                 <h4 style="font-size: 0.9rem; margin-bottom: 8px;">⚖️ 実際の確定金額を入力して帳尻合わせ</h4>
