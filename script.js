@@ -1,6 +1,6 @@
 // --- 1. データ構造の初期化 ---
 let walletData = JSON.parse(localStorage.getItem('ore_wallet_pro_wallet')) || {
-    bank: 0, cash: 0, paypay: 0, hidden: 0, cardRequests: {}
+    bank: 0, cash: 0, paypay: 0, pasmo: 0, hidden: 0, cardRequests: {}
 };
 
 // データの互換性救済処理
@@ -27,7 +27,7 @@ let currentPlanAsset = 'cash';
 let currentAdjustingPlanId = null;
 let calendarViewDate = new Date();
 
-// Safari対策: window.onload ではなく DOMContentLoaded を使用して確実に初期化
+// Safari対策: DOMContentLoaded を使用して確実に初期化
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
 });
@@ -66,7 +66,6 @@ function getCardPaymentKeys() {
     const d = today.getDate();
 
     let currentPayDate, nextPayDate;
-
     if (d <= 27) {
         currentPayDate = new Date(y, m, 27);
         nextPayDate = new Date(y, m + 1, 27);
@@ -87,11 +86,17 @@ function formatDateToKey(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-27`;
 }
 
-function getTargetPaymentKeyForDate(date) {
-    const y = date.getFullYear();
-    const m = date.getMonth();
-    const payDate = new Date(y, m + 1, 27); 
-    return formatDateToKey(payDate);
+function getCardKeyForPlan(item) {
+    const d = new Date(item.date.replace(/-/g, '/'));
+    const y = d.getFullYear();
+    const m = d.getMonth(); 
+
+    if (item.isFixed || (item.name && item.name.includes('[固定費]'))) {
+        return `${y}-${String(m + 1).padStart(2, '0')}-27`;
+    } else {
+        const nextDate = new Date(y, m + 1, 27);
+        return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}-27`;
+    }
 }
 
 function switchPage(pageId, button) {
@@ -117,6 +122,7 @@ function addQuickExpense(method) {
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0];
     let logTitle = "";
+    let logAsset = method;
     
     if (method === 'cash') {
         walletData.cash -= amount;
@@ -128,42 +134,56 @@ function addQuickExpense(method) {
         walletData.bank -= amount;
         logTitle = "クイック出費 (デビット/銀行)";
     } else if (method === 'card') {
-        const targetKey = getTargetPaymentKeyForDate(today);
+        const cardKeys = getCardPaymentKeys();
+        const targetKey = cardKeys.nextKey;
         walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) + amount;
-        const payMonth = new Date(targetKey).getMonth() + 1;
+        const payMonth = new Date(targetKey.replace(/-/g, '/')).getMonth() + 1;
         logTitle = `クイック出費 (カード:${payMonth}/27払に加算)`;
+    } else if (method === 'pasmo_charge') {
+        // 🛠️ パスモ入金：銀行から引いてPASMOにチャージ
+        walletData.bank -= amount;
+        walletData.pasmo = (walletData.pasmo || 0) + amount;
+        logTitle = "PASMO入金 (銀行チャージ)";
+        logAsset = 'pasmo';
+    } else if (method === 'pasmo_transit') {
+        // 🛠️ 交通費：PASMO残高からマイナス
+        walletData.pasmo = (walletData.pasmo || 0) - amount;
+        logTitle = "交通費 (PASMO)";
+        logAsset = 'pasmo';
     }
 
     historyLogs.unshift({
         id: Date.now(),
         date: dateStr,
         name: logTitle,
-        type: 'expense',
+        type: method === 'pasmo_charge' ? 'income' : 'expense', // チャージはPASMO目線で収入、交通費は出費
         amount: amount,
-        asset: method === 'debit' ? 'bank' : method
+        asset: logAsset === 'debit' ? 'bank' : logAsset
     });
 
     saveToStorage();
     calculateBudget();
+    renderCalendar();
     amountInput.value = "";
     alert(`${logTitle}として ¥${amount.toLocaleString()} を反映しました！`);
 }
 
 function loadWalletInputs() {
-    document.getElementById('calc-val-bank').innerText = `¥${(walletData.bank || 0).toLocaleString()}`;
-    document.getElementById('calc-val-cash').innerText = `¥${(walletData.cash || 0).toLocaleString()}`;
-    document.getElementById('calc-val-paypay').innerText = `¥${(walletData.paypay || 0).toLocaleString()}`;
-    document.getElementById('calc-val-hidden').innerText = `¥${(walletData.hidden || 0).toLocaleString()}`;
+    if (document.getElementById('calc-val-bank')) document.getElementById('calc-val-bank').innerText = `¥${(walletData.bank || 0).toLocaleString()}`;
+    if (document.getElementById('calc-val-cash')) document.getElementById('calc-val-cash').innerText = `¥${(walletData.cash || 0).toLocaleString()}`;
+    if (document.getElementById('calc-val-paypay')) document.getElementById('calc-val-paypay').innerText = `¥${(walletData.paypay || 0).toLocaleString()}`;
+    if (document.getElementById('calc-val-pasmo')) document.getElementById('calc-val-pasmo').innerText = `¥${(walletData.pasmo || 0).toLocaleString()}`;
+    if (document.getElementById('calc-val-hidden')) document.getElementById('calc-val-hidden').innerText = `¥${(walletData.hidden || 0).toLocaleString()}`;
 
     const cardKeys = getCardPaymentKeys();
-    document.getElementById('card-label-current').innerText = cardKeys.currentLabel;
-    document.getElementById('card-label-next').innerText = cardKeys.nextLabel;
+    if (document.getElementById('card-label-current')) document.getElementById('card-label-current').innerText = cardKeys.currentLabel;
+    if (document.getElementById('card-label-next')) document.getElementById('card-label-next').innerText = cardKeys.nextLabel;
 
     const currentCardAmt = walletData.cardRequests[cardKeys.currentKey] || 0;
     const nextCardAmt = walletData.cardRequests[cardKeys.nextKey] || 0;
 
-    document.getElementById('card-calc-current').innerText = `¥${currentCardAmt.toLocaleString()}`;
-    document.getElementById('card-calc-next').innerText = `¥${nextCardAmt.toLocaleString()}`;
+    if (document.getElementById('card-calc-current')) document.getElementById('card-calc-current').innerText = `¥${currentCardAmt.toLocaleString()}`;
+    if (document.getElementById('card-calc-next')) document.getElementById('card-calc-next').innerText = `¥${nextCardAmt.toLocaleString()}`;
 }
 
 function adjustAssetAmount(assetKey) {
@@ -190,6 +210,7 @@ function adjustAssetAmount(assetKey) {
     saveToStorage();
     loadWalletInputs();
     calculateBudget();
+    renderCalendar();
     input.value = "";
     alert(`${getAssetLabel(assetKey)}の残高を実際の ¥${actualAmount.toLocaleString()} に合わせました。`);
 }
@@ -222,6 +243,7 @@ function adjustCardAmount(type) {
     saveToStorage();
     loadWalletInputs();
     calculateBudget();
+    renderCalendar();
     input.value = "";
     alert(`${labelStr}のカード請求額を ¥${actualAmount.toLocaleString()} に確定しました。`);
 }
@@ -243,6 +265,7 @@ function addFixedCostMaster() {
     renderFixedCostsMaster();
     renderPlans();
     calculateBudget();
+    renderCalendar();
     nameInput.value = "";
     amtInput.value = "";
     dayInput.value = "";
@@ -313,8 +336,9 @@ function setPlanType(type) {
 
 function setPlanAsset(asset) {
     currentPlanAsset = asset;
-    ['cash', 'bank', 'paypay', 'card'].forEach(a => {
-        document.getElementById(`btn-asset-${a}`).classList.toggle('active', a === asset);
+    ['cash', 'bank', 'paypay', 'pasmo', 'card'].forEach(a => {
+        const btn = document.getElementById(`btn-asset-${a}`);
+        if (btn) btn.classList.toggle('active', a === asset);
     });
 }
 
@@ -348,6 +372,7 @@ function savePlanItem() {
     saveToStorage();
     renderPlans();
     calculateBudget();
+    renderCalendar();
     checkOverduePlans();
     
     document.getElementById('plan-name').value = "";
@@ -388,6 +413,7 @@ function deletePlanItem(id) {
     saveToStorage();
     renderPlans();
     calculateBudget();
+    renderCalendar();
     checkOverduePlans();
 }
 
@@ -396,7 +422,6 @@ function renderPlans() {
     if (!container) return;
     container.innerHTML = "";
     
-    // Safari対策: ハイフンをスラッシュに置換して日付順ソート
     const activePlans = planItems.filter(item => !item.isCompleted).sort((a,b) => {
         return new Date(a.date.replace(/-/g, '/')) - new Date(b.date.replace(/-/g, '/'));
     });
@@ -464,14 +489,14 @@ function confirmPlanCompletion() {
 
     if (item.type === 'income') {
         if (item.asset === 'card') {
-            const targetKey = getTargetPaymentKeyForDate(new Date(item.date.replace(/-/g, '/')));
+            const targetKey = getCardKeyForPlan(item);
             walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) - actualAmount;
         } else {
             walletData[item.asset] = (walletData[item.asset] || 0) + actualAmount;
         }
     } else {
         if (item.asset === 'card') {
-            const targetKey = getTargetPaymentKeyForDate(new Date(item.date.replace(/-/g, '/')));
+            const targetKey = getCardKeyForPlan(item);
             walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) + actualAmount;
         } else {
             walletData[item.asset] = (walletData[item.asset] || 0) - actualAmount;
@@ -492,6 +517,7 @@ function confirmPlanCompletion() {
     saveToStorage();
     renderPlans();
     calculateBudget();
+    renderCalendar();
     checkOverduePlans();
     closeAdjustPanel();
     alert(`「${item.name}」を金額 ¥${actualAmount.toLocaleString()} で確定反映しました。`);
@@ -524,37 +550,50 @@ function checkOverduePlans() {
 }
 
 function calculateBudget() {
-    const totalAssets = (walletData.bank || 0) + (walletData.cash || 0) + (walletData.paypay || 0) + (walletData.hidden || 0);
+    const totalAssets = (walletData.bank || 0) + (walletData.cash || 0) + (walletData.paypay || 0) + (walletData.pasmo || 0) + (walletData.hidden || 0);
     
-    let pendingIncome = 0;
-    let pendingExpense = 0;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    lastDayOfMonth.setHours(0,0,0,0);
+
+    let availableThisMonth = totalAssets;
+    
     planItems.forEach(item => {
-        if (!item.isCompleted) {
-            if (item.type === 'income') pendingIncome += item.amount;
-            else pendingExpense += item.amount;
+        if (!item.isCompleted && item.asset !== 'card') {
+            const itemDate = new Date(item.date.replace(/-/g, '/'));
+            itemDate.setHours(0, 0, 0, 0);
+            if (itemDate >= today && itemDate <= lastDayOfMonth) {
+                if (item.type === 'income') availableThisMonth += item.amount;
+                else availableThisMonth -= item.amount;
+            }
         }
     });
-
-    let totalCardDebt = 0;
-    for (const key in walletData.cardRequests) {
-        totalCardDebt += walletData.cardRequests[key] || 0;
+    
+    let checkDate = new Date(today);
+    checkDate.setDate(checkDate.getDate() + 1);
+    while (checkDate <= lastDayOfMonth) {
+        if (checkDate.getDate() === 27) {
+            const y = checkDate.getFullYear();
+            const m = checkDate.getMonth() + 1;
+            const cardKey = `${y}-${String(m).padStart(2, '0')}-27`;
+            let cardDebt = walletData.cardRequests[cardKey] || 0;
+            
+            planItems.forEach(item => {
+                if (!item.isCompleted && item.asset === 'card') {
+                    if (getCardKeyForPlan(item) === cardKey) {
+                        if (item.type === 'income') cardDebt -= item.amount;
+                        else cardDebt += item.amount;
+                    }
+                }
+            });
+            availableThisMonth -= cardDebt;
+        }
+        checkDate.setDate(checkDate.getDate() + 1);
     }
 
-    const availableThisMonth = (totalAssets + pendingIncome) - (totalCardDebt + pendingExpense);
-
-    const today = new Date();
-    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const daysLeft = lastDayOfMonth.getDate() - today.getDate() + 1;
-
     const availableToday = daysLeft > 0 ? Math.floor(availableThisMonth / daysLeft) : availableThisMonth;
-    
-    const currentDay = today.getDay(); 
-    const distToFri = currentDay >= 5 ? currentDay - 5 : currentDay + 2;
-    const friDate = new Date(today);
-    friDate.setDate(today.getDate() - distToFri);
-    const thuDate = new Date(friDate);
-    thuDate.setDate(friDate.getDate() + 6);
-
     const availableThisWeek = availableToday * 7;
 
     document.getElementById('calc-month').innerText = `¥${availableThisMonth.toLocaleString()}`;
@@ -563,6 +602,13 @@ function calculateBudget() {
     document.getElementById('days-left').innerText = daysLeft;
 
     document.getElementById('label-today-date').innerText = `(${today.getMonth()+1}/${today.getDate()})`;
+    
+    const currentDay = today.getDay(); 
+    const distToFri = currentDay >= 5 ? currentDay - 5 : currentDay + 2;
+    const friDate = new Date(today);
+    friDate.setDate(today.getDate() - distToFri);
+    const thuDate = new Date(friDate);
+    thuDate.setDate(friDate.getDate() + 6);
     document.getElementById('label-week-range').innerText = `(${friDate.getMonth()+1}/${friDate.getDate()}〜${thuDate.getMonth()+1}/${thuDate.getDate()})`;
     document.getElementById('label-month-date').innerText = `(${lastDayOfMonth.getMonth()+1}/${lastDayOfMonth.getDate()}締)`;
 }
@@ -586,13 +632,11 @@ function renderCalendar() {
     const startDayOfWeek = firstDay.getDay();
     const totalDays = lastDay.getDate();
 
-    // 前月分の穴埋め
     for (let i = startDayOfWeek; i > 0; i--) {
         const prevDate = new Date(year, month, 1 - i);
         createDayCell(prevDate, true, container);
     }
 
-    // 当月分の日付
     for (let d = 1; d <= totalDays; d++) {
         const currDate = new Date(year, month, d);
         createDayCell(currDate, false, container);
@@ -609,60 +653,99 @@ function createDayCell(date, isOtherMonth, container) {
     const compareDate = new Date(date);
     compareDate.setHours(0, 0, 0, 0);
 
-    // 今日と同じ日付ならtodayクラスを付与
     if (!isOtherMonth && compareDate.getTime() === today.getTime()) {
         cell.classList.add('today');
     }
 
-    // --- 🛠️【新ロジック】その日の予想残高（持ってるお金）の計算 ---
-    // 1. スタート地点：現在の実質総資産（財布・口座の合計から、カード確定負債を引いた自由に使えるお金）
-    let totalCardDebt = 0;
-    for (const key in walletData.cardRequests) {
-        totalCardDebt += walletData.cardRequests[key] || 0;
-    }
-    let currentAssets = (walletData.bank || 0) + (walletData.cash || 0) + (walletData.paypay || 0) + (walletData.hidden || 0) - totalCardDebt;
+    // --- 1. 未来残高シミュレーション ---
+    let currentAssets = (walletData.bank || 0) + (walletData.cash || 0) + (walletData.paypay || 0) + (walletData.pasmo || 0) + (walletData.hidden || 0);
 
-    // 2. 未来の日付の場合、今日からその日までの「未完了の予定」をすべてシミュレーションして足し引きする
-    if (compareDate >= today) {
-        let estimatedChange = 0;
+    if (compareDate > today) {
+        let tempAssets = currentAssets;
+        
         planItems.forEach(item => {
-            if (!item.isCompleted) {
+            if (!item.isCompleted && item.asset !== 'card') {
                 const itemDate = new Date(item.date.replace(/-/g, '/'));
                 itemDate.setHours(0, 0, 0, 0);
-                
-                // 「今日以降」かつ「カレンダーのこの日以下」の予定を対象に集計
                 if (itemDate >= today && itemDate <= compareDate) {
-                    if (item.type === 'income') {
-                        estimatedChange += item.amount;
-                    } else {
-                        estimatedChange -= item.amount;
-                    }
+                    if (item.type === 'income') tempAssets += item.amount;
+                    else tempAssets -= item.amount;
                 }
             }
         });
-        currentAssets += estimatedChange;
+        
+        let checkDate = new Date(today);
+        checkDate.setDate(checkDate.getDate() + 1);
+        while (checkDate <= compareDate) {
+            if (checkDate.getDate() === 27) {
+                const y = checkDate.getFullYear();
+                const m = checkDate.getMonth() + 1;
+                const cardKey = `${y}-${String(m).padStart(2, '0')}-27`;
+                let cardDebt = walletData.cardRequests[cardKey] || 0;
+                
+                planItems.forEach(item => {
+                    if (!item.isCompleted && item.asset === 'card') {
+                        if (getCardKeyForPlan(item) === cardKey) {
+                            if (item.type === 'income') cardDebt -= item.amount;
+                            else cardDebt += item.amount;
+                        }
+                    }
+                });
+                tempAssets -= cardDebt;
+            }
+            checkDate.setDate(checkDate.getDate() + 1);
+        }
+        currentAssets = tempAssets;
     }
 
-    // --- 画面への表示処理 ---
+    // --- 2. 収入・出費の集計 ---
     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    
-    // その日に未完了の予定があるかチェック（目印用）
-    const hasPlan = planItems.some(p => p.date === dateStr && !p.isCompleted);
+    let dayInc = 0;
+    let dayExp = 0;
 
-    // 残高がマイナスなら赤字、プラスなら通常色にする設定
-    const amtColor = currentAssets >= 0 ? 'var(--text-main, #2d3748)' : 'var(--danger, #e53e3e)';
+    planItems.forEach(p => {
+        if (p.date === dateStr && !p.isCompleted) {
+            if (p.type === 'income') dayInc += p.amount;
+            else dayExp += p.amount;
+        }
+    });
 
-    let html = `
-        <div class="day-num">${date.getDate()}</div>
-        <div class="cal-amt total" style="font-size: 0.75rem; color: ${amtColor}; font-weight: bold; text-align: center; margin-top: 4px;">
-            ¥${currentAssets.toLocaleString()}
-        </div>
-    `;
-    
-    // 予定がある日は、金額の下に小さなドットなどを出して視覚的に分かりやすくする
-    if (hasPlan) {
-        html += `<div style="font-size: 0.55rem; color: #3182ce; text-align: center; margin-top: 2px;">● 予定あり</div>`;
+    if (date.getDate() === 27) {
+        const y = date.getFullYear();
+        const m = date.getMonth() + 1;
+        const cardKey = `${y}-${String(m).padStart(2, '0')}-27`;
+        let cardDebt = walletData.cardRequests[cardKey] || 0;
+        
+        planItems.forEach(item => {
+            if (!item.isCompleted && item.asset === 'card') {
+                if (getCardKeyForPlan(item) === cardKey) {
+                    if (item.type === 'income') cardDebt -= item.amount;
+                    else cardDebt += item.amount;
+                }
+            }
+        });
+        if (cardDebt > 0) dayExp += cardDebt;
+        else if (cardDebt < 0) dayInc += Math.abs(cardDebt);
     }
+
+    // --- 🎨 3. カレンダー枠に100%収める超スマート表示 ---
+    let html = `<div class="day-num">${date.getDate()}</div>`;
+    
+    // 枠を突き破らないよう、文字サイズを一回り小さくし、はみ出た部分は自動で「…」にするガード付きCSS
+    const inlineTextStyle = "font-size: 0.58rem; text-align: center; font-weight: bold; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block;";
+
+    // 収入 (+100緑字)
+    if (dayInc > 0) {
+        html += `<span style="color: #48bb78; ${inlineTextStyle}">+${dayInc.toLocaleString()}</span>`;
+    }
+    // 出費 (-1,290赤字)
+    if (dayExp > 0) {
+        html += `<span style="color: #e53e3e; ${inlineTextStyle}">-${dayExp.toLocaleString()}</span>`;
+    }
+    
+    // 持っているお金 (黒字、マイナスなら赤)
+    const amtColor = currentAssets >= 0 ? '#2d3748' : '#e53e3e';
+    html += `<span style="color: ${amtColor}; font-size: 0.63rem; font-weight: bold; text-align: center; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block;">¥${currentAssets.toLocaleString()}</span>`;
 
     cell.innerHTML = html;
     container.appendChild(cell);
@@ -711,10 +794,11 @@ function deleteHistoryItem(id) {
     saveToStorage();
     renderHistory();
     calculateBudget();
+    renderCalendar();
 }
 
 function getAssetLabel(asset) {
-    const labels = { cash: "現金", bank: "銀行/デビット", paypay: "PayPay", hidden: "隠し金", card: "カード" };
+    const labels = { cash: "現金", bank: "銀行/デビット", paypay: "PayPay", pasmo: "PASMO", hidden: "隠し金", card: "カード" };
     return labels[asset] || asset;
 }
 

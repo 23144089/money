@@ -44,6 +44,8 @@
                     <button class="btn btn-pay" onclick="addQuickExpense('paypay')">📱 PayPay</button>
                     <button class="btn btn-pay" onclick="addQuickExpense('debit')">🏦 デビット</button>
                     <button class="btn btn-pay" onclick="addQuickExpense('card')">💳 カード</button>
+                    <button class="btn" onclick="addQuickExpense('pasmo_charge')" style="background: #3182ce;">PASMO入金</button>
+    <button class="btn" onclick="addQuickExpense('pasmo_transit')" style="background: #e53e3e;">交通費 (PASMO)</button>
                 </div>
             </div>
 
@@ -73,6 +75,7 @@
                     <div class="asset-info"><span class="name">🪙 隠し金</span><span class="val" id="calc-val-hidden">¥0</span></div>
                     <div class="adjust-input-group"><input type="number" id="actual-hidden" placeholder="実際の隠し金"><button class="btn btn-sm" onclick="adjustAssetAmount('hidden')">調整</button></div>
                 </div>
+                <span class="name"></span><div>PASMO残高: <span id="calc-val-pasmo">¥0</span></div>
             </div>
 
             <div class="section-title">💳 クレジットカード請求額（今月・来月）</div>
