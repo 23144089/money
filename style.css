@@ -1,0 +1,126 @@
+:root {
+    --bg-color: #f4f6f9;
+    --card-bg: #ffffff;
+    --text-main: #2d3748;
+    --text-muted: #718096;
+    --primary: #3182ce;
+    --success: #38a169;
+    --danger: #e53e3e;
+    --border-color: #e2e8f0;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-main);
+    padding-bottom: 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.app-container {
+    width: 100%;
+    max-width: 500px;
+    padding: 12px;
+}
+
+header {
+    width: 100%;
+    padding: 12px 4px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+header h1 { font-size: 1.3rem; font-weight: 800; }
+.date-display { font-size: 0.9rem; color: var(--text-muted); }
+
+/* 通知欄スタイル */
+.notification-box {
+    background-color: #fffaf0;
+    border: 1px solid #feebc8;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+}
+.alert-title { font-size: 0.85rem; font-weight: 700; color: #dd6b20; margin-bottom: 6px; }
+.notification-item { font-size: 0.8rem; display: flex; justify-content: space-between; margin-bottom: 4px; padding-bottom: 4px; border-bottom: 1px dashed #feebc8; }
+
+/* ダッシュボードカード */
+.main-status-card {
+    background: linear-gradient(135deg, #2b6cb0, #1a365d);
+    color: white;
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 16px;
+}
+.main-status-card .label { font-size: 0.8rem; opacity: 0.85; }
+.main-status-card .amount-large { font-size: 2.1rem; font-weight: 800; margin: 8px 0 12px 0; }
+.sub-amounts { display: flex; border-top: 1px solid rgba(255, 255, 255, 0.2); padding-top: 10px; }
+.sub-amounts div { width: 50%; }
+.sub-amounts .val { font-size: 1rem; font-weight: 700; }
+
+.section-title { font-size: 0.95rem; font-weight: 700; margin: 20px 0 8px 4px; color: var(--text-main); }
+.card { background: var(--card-bg); border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+
+/* 4つの1タップボタン用グリッド */
+.button-grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.btn { background-color: var(--primary); color: white; border: none; border-radius: 8px; padding: 12px; font-weight: 600; font-size: 0.95rem; cursor: pointer; text-align: center; }
+.btn-pay { background-color: #edf2f7; color: var(--text-main); border: 1px solid #cbd5e0; }
+.btn-pay:active { background-color: #e2e8f0; }
+
+.btn-success { background-color: var(--success); }
+.btn-sm { padding: 6px 10px; font-size: 0.8rem; border-radius: 6px; }
+
+.input-group { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.input-group label { font-size: 0.85rem; color: var(--text-muted); }
+.input-group input, .input-group select { width: 140px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.9rem; text-align: right; }
+
+/* 1タップ切り替えトグルボタン */
+.toggle-buttons { display: flex; gap: 4px; width: 140px; }
+.toggle-buttons-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; width: 160px; }
+.btn-toggle { flex: 1; padding: 6px; font-size: 0.8rem; border: 1px solid var(--border-color); background: #fff; border-radius: 6px; cursor: pointer; font-weight: 600; color: var(--text-muted); }
+.btn-toggle.active { background: var(--primary); color: white; border-color: var(--primary); }
+#btn-type-income.active { background: var(--success); border-color: var(--success); }
+#btn-type-expense.active { background: var(--danger); border-color: var(--danger); }
+
+/* リストアイテム */
+.plan-item, .fixed-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--border-color); }
+.plan-item:last-child, .fixed-item:last-child { border-bottom: none; }
+.plan-info .name, .fixed-item .name { font-size: 0.9rem; font-weight: 600; }
+.plan-info .details { font-size: 0.75rem; color: var(--text-muted); }
+.plan-action { display: flex; align-items: center; gap: 6px; }
+.plan-amount { font-weight: 700; font-size: 0.9rem; }
+.plan-amount.income { color: var(--success); }
+.plan-amount.expense { color: var(--danger); }
+
+/* カレンダー専用スタイル */
+.calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: 700; }
+.calendar-header button { background: none; border: none; font-size: 1rem; cursor: pointer; padding: 4px 10px; }
+.calendar-grid-header { display: grid; grid-template-columns: repeat(7, 1fr); text-align: center; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; }
+.calendar-grid-body { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--border-color); border-left: 1px solid var(--border-color); }
+.calendar-day { min-height: 75px; background: #fff; border-right: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); padding: 2px; display: flex; flex-direction: column; justify-content: space-between; overflow: hidden; }
+.calendar-day .day-num { font-size: 0.7rem; font-weight: 600; color: var(--text-muted); }
+.calendar-day.today { background-color: #ebf8ff; }
+.calendar-day.other-month { opacity: 0.3; background-color: #fafafa; }
+.cal-amt { font-size: 0.6rem; text-align: right; white-space: nowrap; font-weight: 700; }
+.cal-amt.inc { color: var(--success); }
+.cal-amt.exp { color: var(--danger); }
+.cal-amt.total { color: #4a5568; border-top: 1px dotted #e2e8f0; font-weight: 800; }
+
+/* ナビゲーションバー */
+.nav-bar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 500px; height: 64px; background-color: var(--card-bg); border-top: 1px solid var(--border-color); display: flex; justify-content: space-around; align-items: center; z-index: 100; }
+.nav-item { display: flex; flex-direction: column; align-items: center; color: var(--text-muted); background: none; border: none; font-size: 0.7rem; cursor: pointer; width: 20%; height: 100%; justify-content: center; }
+.nav-item.active { color: var(--primary); font-weight: 700; }
+.nav-item span { font-size: 1.1rem; margin-bottom: 2px; }
+
+.app-page { display: none; width: 100%; }
+.app-page.active { display: block; }
+.adjustment-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-top: 8px; display: none; }
