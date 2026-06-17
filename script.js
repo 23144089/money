@@ -3,7 +3,7 @@ let walletData = JSON.parse(localStorage.getItem('ore_wallet_pro_wallet')) || {
     bank: 0, cash: 0, paypay: 0, hidden: 0, cardRequests: {}
 };
 
-// データの互換性救済処理（旧バージョンの単一カードデータを移行）
+// データの互換性救済処理
 if (typeof walletData.cardRequest === 'number') {
     walletData.cardRequests = {};
     const keys = getCardPaymentKeys();
@@ -13,7 +13,7 @@ if (typeof walletData.cardRequest === 'number') {
 if (!walletData.cardRequests) walletData.cardRequests = {};
 if (!walletData.generatedFixedCosts) walletData.generatedFixedCosts = [];
 
-// 固定費マスタ（ひな形：何日にいくらか）
+// 固定費マスタ
 let fixedCosts = JSON.parse(localStorage.getItem('ore_wallet_pro_fixed')) || [
     { id: 1, name: "Wi-Fi代", amount: 4000, day: 25 },
     { id: 2, name: "スマホ代", amount: 4500, day: 27 }
@@ -27,21 +27,26 @@ let currentPlanAsset = 'cash';
 let currentAdjustingPlanId = null;
 let calendarViewDate = new Date();
 
-window.onload = function() {
+// Safari対策: window.onload ではなく DOMContentLoaded を使用して確実に初期化
+document.addEventListener('DOMContentLoaded', function() {
     initApp();
-};
+});
 
 function initApp() {
-    generateFixedCostsToPlans(); // ⚠️ 固定費を月別の予測データに自動展開
-    displayHeaderDate();
-    loadWalletInputs();
-    renderFixedCostsMaster();
-    renderPlans();
-    renderHistory();
-    checkOverduePlans();
-    calculateBudget();
-    renderCalendar();
-    setDefaultDateInForm();
+    try {
+        generateFixedCostsToPlans(); 
+        displayHeaderDate();
+        loadWalletInputs();
+        renderFixedCostsMaster();
+        renderPlans();
+        renderHistory();
+        checkOverduePlans();
+        calculateBudget();
+        renderCalendar();
+        setDefaultDateInForm();
+    } catch (e) {
+        console.error("初期化エラー:", e);
+    }
 }
 
 function displayHeaderDate() {
@@ -54,21 +59,18 @@ function setDefaultDateInForm() {
     document.getElementById('plan-date').value = today.toISOString().split('T')[0];
 }
 
-// 27日支払日に基づく「今月分(直近27日)」と「来月分(次27日)」の期日キー（YYYY-MM-27）を算出
 function getCardPaymentKeys() {
     const today = new Date();
     const y = today.getFullYear();
-    const m = today.getMonth(); // 0 = 1月
+    const m = today.getMonth(); 
     const d = today.getDate();
 
     let currentPayDate, nextPayDate;
 
     if (d <= 27) {
-        // 今日が27日以下なら、今月27日払いが「今月分」、来月27日払いが「来月分」
         currentPayDate = new Date(y, m, 27);
         nextPayDate = new Date(y, m + 1, 27);
     } else {
-        // 今日が28日以降なら、来月27日払いが「直近(今月分)」、再来月27日払いが「来月分」にスライド
         currentPayDate = new Date(y, m + 1, 27);
         nextPayDate = new Date(y, m + 2, 27);
     }
@@ -85,15 +87,13 @@ function formatDateToKey(date) {
     return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-27`;
 }
 
-// クイック出費（カード）の際、利用日に基づく請求先（翌月27日払い）を判定
 function getTargetPaymentKeyForDate(date) {
     const y = date.getFullYear();
     const m = date.getMonth();
-    const payDate = new Date(y, m + 1, 27); // 月末締め翌月27日払い
+    const payDate = new Date(y, m + 1, 27); 
     return formatDateToKey(payDate);
 }
 
-// ページ切り替え
 function switchPage(pageId, button) {
     document.querySelectorAll('.app-page').forEach(page => page.classList.remove('active'));
     document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
@@ -109,7 +109,6 @@ function switchPage(pageId, button) {
     checkOverduePlans();
 }
 
-// --- 2. クイック出費記録ロジック (1タップで即反映) ---
 function addQuickExpense(method) {
     const amountInput = document.getElementById('quick-amount');
     const amount = Number(amountInput.value);
@@ -129,10 +128,8 @@ function addQuickExpense(method) {
         walletData.bank -= amount;
         logTitle = "クイック出費 (デビット/銀行)";
     } else if (method === 'card') {
-        // 利用日に対応する支払日キー（翌月27日）に自動加算
         const targetKey = getTargetPaymentKeyForDate(today);
         walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) + amount;
-        
         const payMonth = new Date(targetKey).getMonth() + 1;
         logTitle = `クイック出費 (カード:${payMonth}/27払に加算)`;
     }
@@ -152,15 +149,12 @@ function addQuickExpense(method) {
     alert(`${logTitle}として ¥${amount.toLocaleString()} を反映しました！`);
 }
 
-// --- 3. 残高・固定費・カード【誤差自動計算】ロジック ---
 function loadWalletInputs() {
-    // 現在の計算値をラベルに反映
     document.getElementById('calc-val-bank').innerText = `¥${(walletData.bank || 0).toLocaleString()}`;
     document.getElementById('calc-val-cash').innerText = `¥${(walletData.cash || 0).toLocaleString()}`;
     document.getElementById('calc-val-paypay').innerText = `¥${(walletData.paypay || 0).toLocaleString()}`;
     document.getElementById('calc-val-hidden').innerText = `¥${(walletData.hidden || 0).toLocaleString()}`;
 
-    // カードの「今月」「来月」枠のラベルと金額設定
     const cardKeys = getCardPaymentKeys();
     document.getElementById('card-label-current').innerText = cardKeys.currentLabel;
     document.getElementById('card-label-next').innerText = cardKeys.nextLabel;
@@ -172,7 +166,6 @@ function loadWalletInputs() {
     document.getElementById('card-calc-next').innerText = `¥${nextCardAmt.toLocaleString()}`;
 }
 
-// 💰 財布残高の誤差調整（実際の残高を入力させて差額を自動履歴化）
 function adjustAssetAmount(assetKey) {
     const input = document.getElementById(`actual-${assetKey}`);
     const actualAmount = Number(input.value);
@@ -198,10 +191,9 @@ function adjustAssetAmount(assetKey) {
     loadWalletInputs();
     calculateBudget();
     input.value = "";
-    alert(`${getAssetLabel(assetKey)}の残高を実際の ¥${actualAmount.toLocaleString()} に合わせました。差額 ¥${difference.toLocaleString()} を履歴に保存しました。`);
+    alert(`${getAssetLabel(assetKey)}の残高を実際の ¥${actualAmount.toLocaleString()} に合わせました。`);
 }
 
-// 💳 カード請求額の誤差調整（今月分 or 来月分）
 function adjustCardAmount(type) {
     const cardKeys = getCardPaymentKeys();
     const targetKey = type === 'current' ? cardKeys.currentKey : cardKeys.nextKey;
@@ -231,10 +223,9 @@ function adjustCardAmount(type) {
     loadWalletInputs();
     calculateBudget();
     input.value = "";
-    alert(`${labelStr}のカード請求額を ¥${actualAmount.toLocaleString()} に上書きし、差額 ¥${difference.toLocaleString()} を履歴に記録しました。`);
+    alert(`${labelStr}のカード請求額を ¥${actualAmount.toLocaleString()} に確定しました。`);
 }
 
-// 🛠️ 固定費マスタ（ひな形）の追加・削除
 function addFixedCostMaster() {
     const nameInput = document.getElementById('new-fixed-name');
     const amtInput = document.getElementById('new-fixed-amount');
@@ -248,10 +239,7 @@ function addFixedCostMaster() {
 
     fixedCosts.push({ id: Date.now(), name: name, amount: amount, day: day });
     saveToStorage();
-    
-    // マスタ追加後、即座に該当月の予測リストへも流し込む
     generateFixedCostsToPlans();
-    
     renderFixedCostsMaster();
     renderPlans();
     calculateBudget();
@@ -284,11 +272,8 @@ function renderFixedCostsMaster() {
     });
 }
 
-// ⚠️ 【重要】マスタから月ごとの予測リスト(planItems)へ自動展開するロジック
 function generateFixedCostsToPlans() {
     const today = new Date();
-    
-    // 先月、今月、来月の3ヶ月枠をスキャンして未展開の固定費があれば生成
     for (let i = -1; i <= 1; i++) {
         const targetDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
         const y = targetDate.getFullYear();
@@ -297,13 +282,11 @@ function generateFixedCostsToPlans() {
 
         fixedCosts.forEach(master => {
             const genKey = `${ymStr}-${master.id}`;
-            // 既に展開済みのログになければ、予測リスト(planItems)に追加
             if (!walletData.generatedFixedCosts.includes(genKey)) {
                 const lastDay = new Date(y, m, 0).getDate();
                 const actualDay = master.day > lastDay ? lastDay : master.day;
                 const dateStr = `${y}-${String(m).padStart(2, '0')}-${String(actualDay).padStart(2, '0')}`;
 
-                // 固定費はデフォルトで「カード引落」とするが、後から個別編集で銀行等に変更も可能
                 planItems.push({
                     id: 'fixed-' + genKey + '-' + Date.now(),
                     name: `[固定費] ${master.name}`,
@@ -322,7 +305,6 @@ function generateFixedCostsToPlans() {
     saveToStorage();
 }
 
-// --- 4. 予測・帳尻合わせ・【月毎に区切って表示】ロジック ---
 function setPlanType(type) {
     currentPlanType = type;
     document.getElementById('btn-type-income').classList.toggle('active', type === 'income');
@@ -345,7 +327,6 @@ function savePlanItem() {
     if (!name || !date || !amount) return alert("項目名、日付、金額を入力してください");
 
     if (editId) {
-        // 月毎に生成された固定費や、予測を上書き編集
         const item = planItems.find(p => p.id == editId);
         if (item) {
             item.name = name;
@@ -410,29 +391,29 @@ function deletePlanItem(id) {
     checkOverduePlans();
 }
 
-// ⚖️ 未完了予測のリストを【年月毎にグループ区切り】して描画
 function renderPlans() {
     const container = document.getElementById('plans-list-container');
     if (!container) return;
     container.innerHTML = "";
     
-    const activePlans = planItems.filter(item => !item.isCompleted).sort((a,b) => new Date(a.date) - new Date(b.date));
+    // Safari対策: ハイフンをスラッシュに置換して日付順ソート
+    const activePlans = planItems.filter(item => !item.isCompleted).sort((a,b) => {
+        return new Date(a.date.replace(/-/g, '/')) - new Date(b.date.replace(/-/g, '/'));
+    });
 
     if (activePlans.length === 0) {
         container.innerHTML = `<p style="text-align:center; color:var(--text-muted); font-size:0.85rem;">未完了の予測はありません</p>`;
         return;
     }
 
-    // 月ごとに連想配列に仕分ける
     const groups = {};
     activePlans.forEach(item => {
-        const d = new Date(item.date);
+        const d = new Date(item.date.replace(/-/g, '/'));
         const key = `${d.getFullYear()}年${d.getMonth() + 1}月`;
         if (!groups[key]) groups[key] = [];
         groups[key].push(item);
     });
 
-    // 仕分けたグループ（月）ごとにヘッダーを作って出力
     for (const monthLabel in groups) {
         const header = document.createElement('div');
         header.className = "month-group-header";
@@ -476,25 +457,21 @@ function closeAdjustPanel() {
     currentAdjustingPlanId = null;
 }
 
-// 予測の実実績化
 function confirmPlanCompletion() {
     const actualAmount = Number(document.getElementById('adjust-actual-amount').value);
     const item = planItems.find(p => p.id === currentAdjustingPlanId);
     if (!item) return;
 
-    // 実際の口座やクレジットカード請求に確定値を反映
     if (item.type === 'income') {
         if (item.asset === 'card') {
-            // カードへ収入反映の場合、利用日基準の翌月27日請求枠からマイナス
-            const targetKey = getTargetPaymentKeyForDate(new Date(item.date));
+            const targetKey = getTargetPaymentKeyForDate(new Date(item.date.replace(/-/g, '/')));
             walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) - actualAmount;
         } else {
             walletData[item.asset] = (walletData[item.asset] || 0) + actualAmount;
         }
     } else {
         if (item.asset === 'card') {
-            // カードでの出費確定の場合、利用日基準の翌月27日請求枠にプラス
-            const targetKey = getTargetPaymentKeyForDate(new Date(item.date));
+            const targetKey = getTargetPaymentKeyForDate(new Date(item.date.replace(/-/g, '/')));
             walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) + actualAmount;
         } else {
             walletData[item.asset] = (walletData[item.asset] || 0) - actualAmount;
@@ -546,11 +523,9 @@ function checkOverduePlans() {
     });
 }
 
-// --- 5. 今日の予算コア計算 (金〜木・末締め対応) ---
 function calculateBudget() {
     const totalAssets = (walletData.bank || 0) + (walletData.cash || 0) + (walletData.paypay || 0) + (walletData.hidden || 0);
     
-    // まだ完了していないすべての予測出費・収入・固定費を計算
     let pendingIncome = 0;
     let pendingExpense = 0;
     planItems.forEach(item => {
@@ -560,13 +535,11 @@ function calculateBudget() {
         }
     });
 
-    // カードの現時点の保持するすべての請求額を合算
     let totalCardDebt = 0;
     for (const key in walletData.cardRequests) {
         totalCardDebt += walletData.cardRequests[key] || 0;
     }
 
-    // 今月自由に使えるお金
     const availableThisMonth = (totalAssets + pendingIncome) - (totalCardDebt + pendingExpense);
 
     const today = new Date();
@@ -575,7 +548,6 @@ function calculateBudget() {
 
     const availableToday = daysLeft > 0 ? Math.floor(availableThisMonth / daysLeft) : availableThisMonth;
     
-    // 金曜始まり〜木曜終わりの週計算
     const currentDay = today.getDay(); 
     const distToFri = currentDay >= 5 ? currentDay - 5 : currentDay + 2;
     const friDate = new Date(today);
@@ -595,7 +567,6 @@ function calculateBudget() {
     document.getElementById('label-month-date').innerText = `(${lastDayOfMonth.getMonth()+1}/${lastDayOfMonth.getDate()}締)`;
 }
 
-// --- 6. カレンダーロジック ---
 function changeMonth(direction) {
     calendarViewDate.setMonth(calendarViewDate.getMonth() + direction);
     renderCalendar();
@@ -646,7 +617,6 @@ function createDayCell(date, isOtherMonth, container) {
     });
 
     let html = `<div class="day-num">${date.getDate()}</div>`;
-    
     if (dayInc > 0) html += `<div class="cal-amt inc">＋${dayInc.toLocaleString()}</div>`;
     if (dayExp > 0) html += `<div class="cal-amt exp">－${dayExp.toLocaleString()}</div>`;
     if (dayInc > 0 || dayExp > 0) {
@@ -657,7 +627,6 @@ function createDayCell(date, isOtherMonth, container) {
     container.appendChild(cell);
 }
 
-// --- 7. 履歴・完全編集ロジック ---
 function renderHistory() {
     const container = document.getElementById('history-list-container');
     if (!container) return;
@@ -696,14 +665,13 @@ function renderHistory() {
 }
 
 function deleteHistoryItem(id) {
-    if(!confirm("この履歴を削除しますか？(※財布残高は自動連動で戻らないため、必要に応じて残高設定から実際の額で再度調整してください)")) return;
+    if(!confirm("この履歴を削除しますか？(※財布残高は自動戻りしません)")) return;
     historyLogs = historyLogs.filter(log => log.id !== id);
     saveToStorage();
     renderHistory();
     calculateBudget();
 }
 
-// --- 8. ユーティリティ・共通処理 ---
 function getAssetLabel(asset) {
     const labels = { cash: "現金", bank: "銀行/デビット", paypay: "PayPay", hidden: "隠し金", card: "カード" };
     return labels[asset] || asset;
