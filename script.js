@@ -586,11 +586,13 @@ function renderCalendar() {
     const startDayOfWeek = firstDay.getDay();
     const totalDays = lastDay.getDate();
 
+    // 前月分の穴埋め
     for (let i = startDayOfWeek; i > 0; i--) {
         const prevDate = new Date(year, month, 1 - i);
         createDayCell(prevDate, true, container);
     }
 
+    // 当月分の日付
     for (let d = 1; d <= totalDays; d++) {
         const currDate = new Date(year, month, d);
         createDayCell(currDate, false, container);
@@ -602,25 +604,64 @@ function createDayCell(date, isOtherMonth, container) {
     cell.className = "calendar-day" + (isOtherMonth ? " other-month" : "");
     
     const today = new Date();
-    if (!isOtherMonth && date.getDate() === today.getDate() && date.getMonth() === today.getMonth() && date.getFullYear() === today.getFullYear()) {
+    today.setHours(0, 0, 0, 0);
+    
+    const compareDate = new Date(date);
+    compareDate.setHours(0, 0, 0, 0);
+
+    // 今日と同じ日付ならtodayクラスを付与
+    if (!isOtherMonth && compareDate.getTime() === today.getTime()) {
         cell.classList.add('today');
     }
 
-    const dateStr = `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
-    
-    const daysPlans = planItems.filter(p => p.date === dateStr && !p.isCompleted);
-    let dayInc = 0;
-    let dayExp = 0;
-    daysPlans.forEach(p => {
-        if (p.type === 'income') dayInc += p.amount;
-        else dayExp += p.amount;
-    });
+    // --- 🛠️【新ロジック】その日の予想残高（持ってるお金）の計算 ---
+    // 1. スタート地点：現在の実質総資産（財布・口座の合計から、カード確定負債を引いた自由に使えるお金）
+    let totalCardDebt = 0;
+    for (const key in walletData.cardRequests) {
+        totalCardDebt += walletData.cardRequests[key] || 0;
+    }
+    let currentAssets = (walletData.bank || 0) + (walletData.cash || 0) + (walletData.paypay || 0) + (walletData.hidden || 0) - totalCardDebt;
 
-    let html = `<div class="day-num">${date.getDate()}</div>`;
-    if (dayInc > 0) html += `<div class="cal-amt inc">＋${dayInc.toLocaleString()}</div>`;
-    if (dayExp > 0) html += `<div class="cal-amt exp">－${dayExp.toLocaleString()}</div>`;
-    if (dayInc > 0 || dayExp > 0) {
-        html += `<div class="cal-amt total">予定あり</div>`;
+    // 2. 未来の日付の場合、今日からその日までの「未完了の予定」をすべてシミュレーションして足し引きする
+    if (compareDate >= today) {
+        let estimatedChange = 0;
+        planItems.forEach(item => {
+            if (!item.isCompleted) {
+                const itemDate = new Date(item.date.replace(/-/g, '/'));
+                itemDate.setHours(0, 0, 0, 0);
+                
+                // 「今日以降」かつ「カレンダーのこの日以下」の予定を対象に集計
+                if (itemDate >= today && itemDate <= compareDate) {
+                    if (item.type === 'income') {
+                        estimatedChange += item.amount;
+                    } else {
+                        estimatedChange -= item.amount;
+                    }
+                }
+            }
+        });
+        currentAssets += estimatedChange;
+    }
+
+    // --- 画面への表示処理 ---
+    const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    
+    // その日に未完了の予定があるかチェック（目印用）
+    const hasPlan = planItems.some(p => p.date === dateStr && !p.isCompleted);
+
+    // 残高がマイナスなら赤字、プラスなら通常色にする設定
+    const amtColor = currentAssets >= 0 ? 'var(--text-main, #2d3748)' : 'var(--danger, #e53e3e)';
+
+    let html = `
+        <div class="day-num">${date.getDate()}</div>
+        <div class="cal-amt total" style="font-size: 0.75rem; color: ${amtColor}; font-weight: bold; text-align: center; margin-top: 4px;">
+            ¥${currentAssets.toLocaleString()}
+        </div>
+    `;
+    
+    // 予定がある日は、金額の下に小さなドットなどを出して視覚的に分かりやすくする
+    if (hasPlan) {
+        html += `<div style="font-size: 0.55rem; color: #3182ce; text-align: center; margin-top: 2px;">● 予定あり</div>`;
     }
 
     cell.innerHTML = html;
