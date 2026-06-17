@@ -147,3 +147,14 @@ header h1 { font-size: 1.3rem; font-weight: 800; }
 .app-page { display: none; width: 100%; }
 .app-page.active { display: block; }
 .adjustment-box { background-color: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px; margin-top: 8px; display: none; }
+
+/* スマホでの入力時自動ズームを防止 */
+@media screen and (max-width: 768px) {
+    input[type="text"],
+    input[type="number"],
+    input[type="date"],
+    select,
+    textarea {
+        font-size: 16px !important; /* 16px以上にすることでSafariのズームを強制停止 */
+    }
+}
