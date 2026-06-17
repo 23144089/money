@@ -123,42 +123,54 @@ function addQuickExpense(method) {
     const dateStr = today.toISOString().split('T')[0];
     let logTitle = "";
     let logAsset = method;
+    let undoData = {}; 
     
     if (method === 'cash') {
         walletData.cash -= amount;
         logTitle = "クイック出費 (現金)";
+        undoData = { cash: amount };
     } else if (method === 'paypay') {
         walletData.paypay -= amount;
         logTitle = "クイック出費 (PayPay)";
+        undoData = { paypay: amount };
     } else if (method === 'debit') {
         walletData.bank -= amount;
         logTitle = "クイック出費 (デビット/銀行)";
+        undoData = { bank: amount };
     } else if (method === 'card') {
         const cardKeys = getCardPaymentKeys();
         const targetKey = cardKeys.nextKey;
         walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) + amount;
         const payMonth = new Date(targetKey.replace(/-/g, '/')).getMonth() + 1;
         logTitle = `クイック出費 (カード:${payMonth}/27払に加算)`;
+        undoData = { cardRequests: { [targetKey]: -amount } };
     } else if (method === 'pasmo_charge') {
-        // 🛠️ パスモ入金：銀行から引いてPASMOにチャージ
-        walletData.bank -= amount;
-        walletData.pasmo = (walletData.pasmo || 0) + amount;
-        logTitle = "PASMO入金 (銀行チャージ)";
+        // 🛠️ 修正：PASMOチャージをカード引き落とし連動に変更
+        const cardKeys = getCardPaymentKeys();
+        const targetKey = cardKeys.nextKey; // 次回支払い分のカードキー
+        
+        walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) + amount; // カード請求を増やす
+        walletData.pasmo = (walletData.pasmo || 0) + amount; // PASMO残高を増やす
+        
+        const payMonth = new Date(targetKey.replace(/-/g, '/')).getMonth() + 1;
+        logTitle = `PASMO入金 (カード:${payMonth}/27払からチャージ)`;
         logAsset = 'pasmo';
+        undoData = { cardRequests: { [targetKey]: -amount }, pasmo: -amount }; // 削除時はカード請求を減らし、PASMOも減らす
     } else if (method === 'pasmo_transit') {
-        // 🛠️ 交通費：PASMO残高からマイナス
         walletData.pasmo = (walletData.pasmo || 0) - amount;
         logTitle = "交通費 (PASMO)";
         logAsset = 'pasmo';
+        undoData = { pasmo: amount };
     }
 
     historyLogs.unshift({
         id: Date.now(),
         date: dateStr,
         name: logTitle,
-        type: method === 'pasmo_charge' ? 'income' : 'expense', // チャージはPASMO目線で収入、交通費は出費
+        type: method === 'pasmo_charge' ? 'income' : 'expense', // チャージ自体はPASMO視点で収入扱い
         amount: amount,
-        asset: logAsset === 'debit' ? 'bank' : logAsset
+        asset: logAsset === 'debit' ? 'bank' : logAsset,
+        undoData: undoData 
     });
 
     saveToStorage();
@@ -202,7 +214,8 @@ function adjustAssetAmount(assetKey) {
             name: `${getAssetLabel(assetKey)}残高差額調整 (${difference > 0 ? '不明な収入/誤差' : '不明な出費/誤差'})`,
             type: difference > 0 ? 'income' : 'expense',
             amount: Math.abs(difference),
-            asset: assetKey
+            asset: assetKey,
+            undoData: { [assetKey]: -difference } 
         });
     }
 
@@ -235,7 +248,8 @@ function adjustCardAmount(type) {
             name: `カード請求差額調整:${labelStr} (${difference > 0 ? '未認識のカード出費' : '重複・過剰分戻し'})`,
             type: difference > 0 ? 'expense' : 'income',
             amount: Math.abs(difference),
-            asset: 'card'
+            asset: 'card',
+            undoData: { cardRequests: { [targetKey]: -difference } } 
         });
     }
 
@@ -487,19 +501,25 @@ function confirmPlanCompletion() {
     const item = planItems.find(p => p.id === currentAdjustingPlanId);
     if (!item) return;
 
+    let undoData = {}; 
+
     if (item.type === 'income') {
         if (item.asset === 'card') {
             const targetKey = getCardKeyForPlan(item);
             walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) - actualAmount;
+            undoData = { cardRequests: { [targetKey]: actualAmount } };
         } else {
             walletData[item.asset] = (walletData[item.asset] || 0) + actualAmount;
+            undoData = { [item.asset]: -actualAmount };
         }
     } else {
         if (item.asset === 'card') {
             const targetKey = getCardKeyForPlan(item);
             walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) + actualAmount;
+            undoData = { cardRequests: { [targetKey]: -actualAmount } };
         } else {
             walletData[item.asset] = (walletData[item.asset] || 0) - actualAmount;
+            undoData = { [item.asset]: actualAmount };
         }
     }
 
@@ -511,7 +531,9 @@ function confirmPlanCompletion() {
         name: `[確定] ${item.name}`,
         type: item.type,
         amount: actualAmount,
-        asset: item.asset
+        asset: item.asset,
+        undoData: undoData,        
+        undoPlanId: item.id       
     });
 
     saveToStorage();
@@ -554,54 +576,111 @@ function calculateBudget() {
     
     const today = new Date();
     today.setHours(0,0,0,0);
+    
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     lastDayOfMonth.setHours(0,0,0,0);
-
-    let availableThisMonth = totalAssets;
     
+    let maxSimulationDate = new Date(lastDayOfMonth);
     planItems.forEach(item => {
-        if (!item.isCompleted && item.asset !== 'card') {
+        if (!item.isCompleted) {
             const itemDate = new Date(item.date.replace(/-/g, '/'));
-            itemDate.setHours(0, 0, 0, 0);
-            if (itemDate >= today && itemDate <= lastDayOfMonth) {
-                if (item.type === 'income') availableThisMonth += item.amount;
-                else availableThisMonth -= item.amount;
+            itemDate.setHours(0,0,0,0);
+            if (itemDate > maxSimulationDate) {
+                maxSimulationDate = new Date(itemDate);
             }
         }
     });
+
+    let minMargin = totalAssets - 20000; 
+    let bottomDate = new Date(today);
     
+    let tempAssets = totalAssets;
     let checkDate = new Date(today);
-    checkDate.setDate(checkDate.getDate() + 1);
-    while (checkDate <= lastDayOfMonth) {
-        if (checkDate.getDate() === 27) {
-            const y = checkDate.getFullYear();
-            const m = checkDate.getMonth() + 1;
-            const cardKey = `${y}-${String(m).padStart(2, '0')}-27`;
-            let cardDebt = walletData.cardRequests[cardKey] || 0;
+    
+    while (checkDate <= maxSimulationDate) {
+        if (checkDate > today) {
+            const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
             
             planItems.forEach(item => {
-                if (!item.isCompleted && item.asset === 'card') {
-                    if (getCardKeyForPlan(item) === cardKey) {
-                        if (item.type === 'income') cardDebt -= item.amount;
-                        else cardDebt += item.amount;
+                if (!item.isCompleted && item.asset !== 'card') {
+                    const itemDate = new Date(item.date.replace(/-/g, '/'));
+                    itemDate.setHours(0, 0, 0, 0);
+                    if (itemDate.getTime() === checkDate.getTime()) {
+                        if (item.type === 'income') tempAssets += item.amount;
+                        else tempAssets -= item.amount;
                     }
                 }
             });
-            availableThisMonth -= cardDebt;
+            
+            if (checkDate.getDate() === 27) {
+                const y = checkDate.getFullYear();
+                const m = checkDate.getMonth() + 1;
+                const cardKey = `${y}-${String(m).padStart(2, '0')}-27`;
+                let cardDebt = walletData.cardRequests[cardKey] || 0;
+                
+                planItems.forEach(item => {
+                    if (!item.isCompleted && item.asset === 'card') {
+                        if (getCardKeyForPlan(item) === cardKey) {
+                            if (item.type === 'income') cardDebt -= item.amount;
+                            else cardDebt += item.amount;
+                        }
+                    }
+                });
+                tempAssets -= cardDebt;
+            }
         }
+        
+        let currentMargin = tempAssets - 20000;
+        if (currentMargin < minMargin) {
+            minMargin = currentMargin;
+            bottomDate = new Date(checkDate);
+        }
+        
         checkDate.setDate(checkDate.getDate() + 1);
     }
 
-    const daysLeft = lastDayOfMonth.getDate() - today.getDate() + 1;
-    const availableToday = daysLeft > 0 ? Math.floor(availableThisMonth / daysLeft) : availableThisMonth;
+    const diffTime = bottomDate.getTime() - today.getTime();
+    const daysToBottom = Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
+
+    let availableToday = 0;
+    if (minMargin >= 0) {
+        availableToday = Math.floor(minMargin / daysToBottom);
+    } else {
+        availableToday = Math.ceil(minMargin / daysToBottom);
+    }
+    
     const availableThisWeek = availableToday * 7;
+    const availableThisMonth = minMargin;
 
-    document.getElementById('calc-month').innerText = `¥${availableThisMonth.toLocaleString()}`;
-    document.getElementById('calc-today').innerText = `¥${availableToday.toLocaleString()}`;
-    document.getElementById('calc-week').innerText = `¥${availableThisWeek.toLocaleString()}`;
-    document.getElementById('days-left').innerText = daysLeft;
+    const formatCurrency = (amt) => {
+        return amt < 0 ? `-¥${Math.abs(amt).toLocaleString()}` : `¥${amt.toLocaleString()}`;
+    };
 
-    document.getElementById('label-today-date').innerText = `(${today.getMonth()+1}/${today.getDate()})`;
+    const elToday = document.getElementById('calc-today');
+    const elWeek = document.getElementById('calc-week');
+    const elMonth = document.getElementById('calc-month');
+
+    if (elToday) {
+        elToday.innerText = formatCurrency(availableToday);
+        elToday.style.color = availableToday < 0 ? '#e53e3e' : '';
+    }
+    if (elWeek) {
+        elWeek.innerText = formatCurrency(availableThisWeek);
+        elWeek.style.color = availableThisWeek < 0 ? '#e53e3e' : '';
+    }
+    if (elMonth) {
+        elMonth.innerText = formatCurrency(availableThisMonth);
+        elMonth.style.color = availableThisMonth < 0 ? '#e53e3e' : '';
+    }
+
+    const daysLeft = lastDayOfMonth.getDate() - today.getDate() + 1;
+    if (document.getElementById('days-left')) {
+        document.getElementById('days-left').innerText = daysLeft;
+    }
+
+    if (document.getElementById('label-today-date')) {
+        document.getElementById('label-today-date').innerText = `(${today.getMonth()+1}/${today.getDate()})`;
+    }
     
     const currentDay = today.getDay(); 
     const distToFri = currentDay >= 5 ? currentDay - 5 : currentDay + 2;
@@ -609,8 +688,12 @@ function calculateBudget() {
     friDate.setDate(today.getDate() - distToFri);
     const thuDate = new Date(friDate);
     thuDate.setDate(friDate.getDate() + 6);
-    document.getElementById('label-week-range').innerText = `(${friDate.getMonth()+1}/${friDate.getDate()}〜${thuDate.getMonth()+1}/${thuDate.getDate()})`;
-    document.getElementById('label-month-date').innerText = `(${lastDayOfMonth.getMonth()+1}/${lastDayOfMonth.getDate()}締)`;
+    if (document.getElementById('label-week-range')) {
+        document.getElementById('label-week-range').innerText = `(${friDate.getMonth()+1}/${friDate.getDate()}〜${thuDate.getMonth()+1}/${thuDate.getDate()})`;
+    }
+    if (document.getElementById('label-month-date')) {
+        document.getElementById('label-month-date').innerText = `(${lastDayOfMonth.getMonth()+1}/${lastDayOfMonth.getDate()}締)`;
+    }
 }
 
 function changeMonth(direction) {
@@ -657,7 +740,6 @@ function createDayCell(date, isOtherMonth, container) {
         cell.classList.add('today');
     }
 
-    // --- 1. 未来残高シミュレーション ---
     let currentAssets = (walletData.bank || 0) + (walletData.cash || 0) + (walletData.paypay || 0) + (walletData.pasmo || 0) + (walletData.hidden || 0);
 
     if (compareDate > today) {
@@ -698,7 +780,6 @@ function createDayCell(date, isOtherMonth, container) {
         currentAssets = tempAssets;
     }
 
-    // --- 2. 収入・出費の集計 ---
     const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     let dayInc = 0;
     let dayExp = 0;
@@ -728,23 +809,17 @@ function createDayCell(date, isOtherMonth, container) {
         else if (cardDebt < 0) dayInc += Math.abs(cardDebt);
     }
 
-    // --- 🎨 3. カレンダー枠に100%収める超スマート表示 ---
     let html = `<div class="day-num">${date.getDate()}</div>`;
-    
-    // 枠を突き破らないよう、文字サイズを一回り小さくし、はみ出た部分は自動で「…」にするガード付きCSS
     const inlineTextStyle = "font-size: 0.58rem; text-align: center; font-weight: bold; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block;";
 
-    // 収入 (+100緑字)
     if (dayInc > 0) {
         html += `<span style="color: #48bb78; ${inlineTextStyle}">+${dayInc.toLocaleString()}</span>`;
     }
-    // 出費 (-1,290赤字)
     if (dayExp > 0) {
         html += `<span style="color: #e53e3e; ${inlineTextStyle}">-${dayExp.toLocaleString()}</span>`;
     }
     
-    // 持っているお金 (黒字、マイナスなら赤)
-    const amtColor = currentAssets >= 0 ? '#2d3748' : '#e53e3e';
+    const amtColor = currentAssets >= 20000 ? '#2d3748' : '#e53e3e';
     html += `<span style="color: ${amtColor}; font-size: 0.63rem; font-weight: bold; text-align: center; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block;">¥${currentAssets.toLocaleString()}</span>`;
 
     cell.innerHTML = html;
@@ -789,12 +864,54 @@ function renderHistory() {
 }
 
 function deleteHistoryItem(id) {
-    if(!confirm("この履歴を削除しますか？(※財布残高は自動戻りしません)")) return;
-    historyLogs = historyLogs.filter(log => log.id !== id);
+    const log = historyLogs.find(l => l.id === id);
+    if (!log) return;
+
+    if (!confirm(`この履歴「${log.name}」を削除しますか？\n連動して財布の金額が自動で元に戻ります。`)) return;
+
+    // 1. 金額の巻き戻し (undoDataが仕込まれている場合)
+    if (log.undoData) {
+        for (const key in log.undoData) {
+            if (key === 'cardRequests') {
+                for (const cardKey in log.undoData.cardRequests) {
+                    walletData.cardRequests[cardKey] = (walletData.cardRequests[cardKey] || 0) + log.undoData.cardRequests[cardKey];
+                }
+            } else {
+                walletData[key] = (walletData[key] || 0) + log.undoData[key];
+            }
+        }
+    } else {
+        // 【救済処理】古い履歴（undoDataがない場合）の簡易的な自動戻し
+        if (log.asset !== 'card' && !log.name.includes("PASMO入金") && !log.name.includes("差額調整")) {
+            if (log.type === 'income') {
+                walletData[log.asset] = (walletData[log.asset] || 0) - log.amount;
+            } else {
+                walletData[log.asset] = (walletData[log.asset] || 0) + log.amount;
+            }
+        }
+    }
+
+    // 2. 予定（予測）の未完了への戻し連動
+    if (log.undoPlanId) {
+        const item = planItems.find(p => p.id === log.undoPlanId);
+        if (item) {
+            item.isCompleted = false; 
+        }
+    }
+
+    // 履歴データから削除
+    historyLogs = historyLogs.filter(l => l.id !== id);
+
+    // ストレージ保存と全表示の更新
     saveToStorage();
-    renderHistory();
+    loadWalletInputs();
+    renderPlans();
     calculateBudget();
     renderCalendar();
+    renderHistory();
+    checkOverduePlans();
+    
+    alert(`「${log.name}」の履歴を削除し、金額を元に戻しました！`);
 }
 
 function getAssetLabel(asset) {
