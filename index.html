@@ -3,15 +3,501 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>俺の予算管理アプリ</title>
+    <title>Personal Budget App</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-main: #2d3748;
+            --text-muted: #718096;
+            --primary: #3182ce;
+            --success: #38a169;
+            --danger: #e53e3e;
+            --border-color: #e2e8f0;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            padding-bottom: 80px; /* ナビゲーションバー用の余白 */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .app-container {
+            width: 100%;
+            max-width: 500px;
+            padding: 16px;
+        }
+
+        header {
+            width: 100%;
+            padding: 16px 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 { font-size: 1.3rem; font-weight: 800; }
+        .date-display { font-size: 0.9rem; color: var(--text-muted); }
+
+        /* メインダッシュボード（今日使えるお金） */
+        .main-status-card {
+            background: linear-gradient(135deg, #2b6cb0, #1a365d);
+            color: white;
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(26, 54, 93, 0.15);
+        }
+
+        .main-status-card .label { font-size: 0.85rem; opacity: 0.85; margin-bottom: 4px; }
+        .main-status-card .amount-large { font-size: 2.3rem; font-weight: 800; margin-bottom: 16px; }
+        
+        .sub-amounts {
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid rgba(255, 255, 255, 0.2);
+            padding-top: 12px;
+        }
+        .sub-amounts div { width: 50%; }
+        .sub-amounts .val { font-size: 1.1rem; font-weight: 700; margin-top: 2px; }
+
+        .section-title { font-size: 1rem; font-weight: 700; margin: 24px 0 10px 4px; }
+        
+        .card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        /* フォーム入力 */
+        .input-group {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .input-group:last-child { margin-bottom: 0; }
+        .input-group label { font-size: 0.9rem; color: var(--text-muted); }
+        .input-group input, .input-group select {
+            width: 140px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 0.95rem;
+            text-align: right;
+        }
+        .input-group select { text-align-last: right; }
+
+        .quick-add-form { display: flex; gap: 8px; }
+        .quick-add-form input { flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; }
+
+        .btn {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 16px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .btn-success { background-color: var(--success); }
+        .btn-sm { padding: 4px 8px; font-size: 0.8rem; border-radius: 4px; }
+
+        /* 予定リスト */
+        .plan-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .plan-item:last-child { border-bottom: none; }
+        .plan-info .name { font-size: 0.95rem; font-weight: 600; }
+        .plan-info .details { font-size: 0.75rem; color: var(--text-muted); }
+        .plan-action { display: flex; align-items: center; gap: 8px; }
+        .plan-amount { font-weight: 700; font-size: 0.95rem; }
+        .plan-amount.income { color: var(--success); }
+        .plan-amount.expense { color: var(--danger); }
+
+        /* 下部ナビゲーション */
+        .nav-bar {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 500px;
+            height: 64px;
+            background-color: var(--card-bg);
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            z-index: 100;
+        }
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            color: var(--text-muted);
+            background: none;
+            border: none;
+            font-size: 0.75rem;
+            cursor: pointer;
+            width: 33%;
+        }
+        .nav-item.active { color: var(--primary); font-weight: 700; }
+        .nav-item span { font-size: 1.2rem; margin-bottom: 2px; }
+
+        .app-page { display: none; width: 100%; }
+        .app-page.active { display: block; }
+
+        /* 帳尻合わせエリア */
+        .adjustment-box {
+            background-color: #f0fdf4;
+            border: 1px solid #bbf7d0;
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 8px;
+            display: none;
+        }
+    </style>
 </head>
 <body>
 
-    <h1>予算管理アプリ（テスト画面）</h1>
-    <p>スマホで表示されたら成功です！</p>
-    <p>デベロッパーコンソール（またはこの後の実装）でJavaScriptが動きます。</p>
+    <div class="app-container">
+        <header>
+            <h1>MyBudget</h1>
+            <div class="date-display" id="current-date">2026年--月--日</div>
+        </header>
 
-    <script src="script.js"></script>
-    
+        <div id="page-home" class="app-page active">
+            <div class="main-status-card">
+                <div class="label">今日使えるお金</div>
+                <div class="amount-large" id="calc-today">¥0</div>
+                <div class="sub-amounts">
+                    <div>
+                        <div class="label">今週使えるお金</div>
+                        <div class="val" id="calc-week">¥0</div>
+                    </div>
+                    <div>
+                        <div class="label">今月自由に使えるお金</div>
+                        <div class="val" id="calc-month">¥0</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section-title">クイック出費記録（今日）</div>
+            <div class="card">
+                <div class="quick-add-form">
+                    <input type="number" id="quick-amount" placeholder="金額を入力 (円)" inputmode="numeric">
+                    <select id="quick-asset">
+                        <option value="cash">現金</option>
+                        <option value="bank">銀行</option>
+                        <option value="paypay">PayPay</option>
+                    </select>
+                    <button class="btn" onclick="addQuickExpense()">記録</button>
+                </div>
+            </div>
+
+            <div class="section-title">今月の残り日数</div>
+            <div class="card" style="text-align: center; color: var(--text-muted); font-weight: 600;">
+                今月はあと <span id="days-left" style="color: var(--text-main); font-size: 1.2rem; font-weight: 700;">0</span> 日
+            </div>
+        </div>
+
+        <div id="page-wallet" class="app-page">
+            <div class="section-title">現在の貯金額（残高）</div>
+            <div class="card">
+                <div class="input-group"><label>銀行残高</label><input type="number" id="asset-bank" onchange="updateWalletData()"></div>
+                <div class="input-group"><label>現金手元</label><input type="number" id="asset-cash" onchange="updateWalletData()"></div>
+                <div class="input-group"><label>PayPay残高</label><input type="number" id="asset-paypay" onchange="updateWalletData()"></div>
+                <div class="input-group"><label>隠し金</label><input type="number" id="asset-hidden" onchange="updateWalletData()"></div>
+            </div>
+
+            <div class="section-title">カード請求額</div>
+            <div class="card">
+                <div class="input-group"><label>今月請求分</label><input type="number" id="card-this" onchange="updateWalletData()"></div>
+                <div class="input-group"><label>来月請求分</label><input type="number" id="card-next" onchange="updateWalletData()"></div>
+            </div>
+
+            <div class="section-title">毎月の固定費</div>
+            <div class="card">
+                <div class="input-group"><label>Wi-Fi代</label><input type="number" id="fixed-wifi" onchange="updateWalletData()"></div>
+                <div class="input-group"><label>スマホ代</label><input type="number" id="fixed-mobile" onchange="updateWalletData()"></div>
+            </div>
+        </div>
+
+        <div id="page-plans" class="app-page">
+            <div class="section-title">新しい予測（予定）の追加</div>
+            <div class="card">
+                <div class="input-group"><label>項目名</label><input type="text" id="plan-name" placeholder="例: バイト代, 旅行" style="text-align:left;"></div>
+                <div class="input-group">
+                    <label>種類</label>
+                    <select id="plan-type">
+                        <option value="income">収入予測 (＋)</option>
+                        <option value="expense">出費予定 (－)</option>
+                    </select>
+                </div>
+                <div class="input-group"><label>予想金額</label><input type="number" id="plan-amount-input" placeholder="円"></div>
+                <div class="input-group">
+                    <label>反映・引落先</label>
+                    <select id="plan-asset">
+                        <option value="bank">銀行</option>
+                        <option value="cash">現金</option>
+                        <option value="paypay">PayPay</option>
+                    </select>
+                </div>
+                <button class="btn btn-success" style="width: 100%; margin-top: 8px;" onclick="addPlanItem()">予定を追加</button>
+            </div>
+
+            <div class="section-title">未完了の予測リスト（帳尻合わせ用）</div>
+            <div class="card" id="plans-list-container"></div>
+
+            <div id="adjust-panel" class="adjustment-box">
+                <h4 style="font-size: 0.9rem; margin-bottom: 8px;">💸 【帳尻合わせ】実際の実績額を入力</h4>
+                <div style="display: flex; gap: 8px;">
+                    <input type="number" id="adjust-actual-amount" style="flex: 1; padding: 6px; border-radius: 4px; border: 1px solid var(--border-color);">
+                    <button class="btn btn-sm btn-success" id="adjust-confirm-btn">確定して残高へ反映</button>
+                    <button class="btn btn-sm" style="background-color: var(--text-muted);" onclick="closeAdjustPanel()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <nav class="nav-bar">
+        <button class="nav-item active" onclick="switchPage('home', this)"><span>🏠</span>ホーム</button>
+        <button class="nav-item" onclick="switchPage('wallet', this)"><span>💳</span>残高・固定費</button>
+        <button class="nav-item" onclick="switchPage('plans', this)"><span>⚖️</span>予測・帳尻</button>
+    </nav>
+
+    <script>
+        // --- 1. データの状態管理（LocalStorage連携） ---
+        let walletData = JSON.parse(localStorage.getItem('ore_wallet_data')) || {
+            bank: 0, cash: 0, paypay: 0, hidden: 0, cardThis: 0, cardNext: 0, wifi: 0, mobile: 0
+        };
+
+        let planItems = JSON.parse(localStorage.getItem('ore_plan_items'));
+        if (!planItems) {
+            // 初期プリセット
+            planItems = [
+                { id: 1, name: "仕送り", type: "income", amount: 50000, asset: "bank", isCompleted: false, details: "毎月20日予定" },
+                { id: 2, name: "バイト収入", type: "income", amount: 40000, asset: "bank", isCompleted: false, details: "毎月20日予定" },
+                { id: 3, name: "インターン収入", type: "income", amount: 30000, asset: "bank", isCompleted: false, details: "月末予定" },
+                { id: 4, name: "旅行・イベント", type: "expense", amount: 20000, asset: "cash", isCompleted: false, details: "出費予定" }
+            ];
+            localStorage.setItem('ore_plan_items', JSON.stringify(planItems));
+        }
+
+        let currentAdjustingId = null;
+
+        window.onload = function() {
+            displayDate();
+            loadWalletInputs();
+            renderPlans();
+            calculateBudget();
+        };
+
+        function displayDate() {
+            const today = new Date();
+            document.getElementById('current-date').innerText = `${today.getFullYear()}年${today.getMonth() + 1}月${today.getDate()}日`;
+        }
+
+        function switchPage(pageId, button) {
+            document.querySelectorAll('.app-page').forEach(page => page.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`page-${pageId}`).classList.add('active');
+            button.classList.add('active');
+            calculateBudget();
+            if(pageId === 'plans') renderPlans();
+        }
+
+        // --- 2. 残高データの更新 ---
+        function loadWalletInputs() {
+            document.getElementById('asset-bank').value = walletData.bank;
+            document.getElementById('asset-cash').value = walletData.cash;
+            document.getElementById('asset-paypay').value = walletData.paypay;
+            document.getElementById('asset-hidden').value = walletData.hidden;
+            document.getElementById('card-this').value = walletData.cardThis;
+            document.getElementById('card-next').value = walletData.cardNext;
+            document.getElementById('fixed-wifi').value = walletData.wifi;
+            document.getElementById('fixed-mobile').value = walletData.mobile;
+        }
+
+        function updateWalletData() {
+            walletData.bank = Number(document.getElementById('asset-bank').value) || 0;
+            walletData.cash = Number(document.getElementById('asset-cash').value) || 0;
+            walletData.paypay = Number(document.getElementById('asset-paypay').value) || 0;
+            walletData.hidden = Number(document.getElementById('asset-hidden').value) || 0;
+            walletData.cardThis = Number(document.getElementById('card-this').value) || 0;
+            walletData.cardNext = Number(document.getElementById('card-next').value) || 0;
+            walletData.wifi = Number(document.getElementById('fixed-wifi').value) || 0;
+            walletData.mobile = Number(document.getElementById('fixed-mobile').value) || 0;
+
+            localStorage.setItem('ore_wallet_data', JSON.stringify(walletData));
+            calculateBudget();
+        }
+
+        // --- 3. 毎日のクイック出費記録（即時反映） ---
+        function addQuickExpense() {
+            const amountInput = document.getElementById('quick-amount');
+            const assetSelect = document.getElementById('quick-asset');
+            const amount = Number(amountInput.value);
+            const assetType = assetSelect.value;
+
+            if (!amount || amount <= 0) return alert("金額を入力してください");
+
+            walletData[assetType] -= amount; // 選んだ財布から即時引き算
+            localStorage.setItem('ore_wallet_data', JSON.stringify(walletData));
+            
+            loadWalletInputs();
+            calculateBudget();
+            amountInput.value = "";
+            alert(`実績として残高から ¥${amount} 引きました！`);
+        }
+
+        // --- 4. 予測リストの追加・描画 ---
+        function addPlanItem() {
+            const name = document.getElementById('plan-name').value;
+            const type = document.getElementById('plan-type').value;
+            const amount = Number(document.getElementById('plan-amount-input').value);
+            const asset = document.getElementById('plan-asset').value;
+
+            if (!name || !amount) return alert("項目名と金額を入力してください");
+
+            planItems.push({
+                id: Date.now(), name: name, type: type, amount: amount, asset: asset, isCompleted: false, details: "ユーザー追加の予測"
+            });
+            localStorage.setItem('ore_plan_items', JSON.stringify(planItems));
+            
+            document.getElementById('plan-name').value = "";
+            document.getElementById('plan-amount-input').value = "";
+            renderPlans();
+            calculateBudget();
+        }
+
+        function deletePlanItem(id) {
+            planItems = planItems.filter(item => item.id !== id);
+            localStorage.setItem('ore_plan_items', JSON.stringify(planItems));
+            renderPlans();
+            calculateBudget();
+        }
+
+        function renderPlans() {
+            const container = document.getElementById('plans-list-container');
+            container.innerHTML = "";
+            const activePlans = planItems.filter(item => !item.isCompleted);
+
+            if (activePlans.length === 0) {
+                container.innerHTML = `<p style="text-align:center; color:var(--text-muted); font-size:0.9rem;">未完了の予測はありません</p>`;
+                return;
+            }
+
+            activePlans.forEach(item => {
+                const itemEl = document.createElement('div');
+                itemEl.className = "plan-item";
+                const sign = item.type === 'income' ? '＋' : '－';
+                const amtClass = item.type === 'income' ? 'income' : 'expense';
+                const assetLabel = item.asset === 'bank' ? '銀行' : item.asset === 'cash' ? '現金' : 'PayPay';
+
+                itemEl.innerHTML = `
+                    <div class="plan-info">
+                        <div class="name">${item.name} <span style="font-size:0.7rem; background:#e2e8f0; padding:2px 4px; border-radius:4px;">${assetLabel}</span></div>
+                        <div class="details">${item.details}</div>
+                    </div>
+                    <div class="plan-action">
+                        <span class="plan-amount ${amtClass}">${sign}¥${item.amount.toLocaleString()}</span>
+                        <button class="btn btn-sm btn-success" onclick="openAdjustPanel(${item.id}, ${item.amount})">確定</button>
+                        <button class="btn btn-sm" style="background-color:var(--danger);" onclick="deletePlanItem(${item.id})">削</button>
+                    </div>
+                `;
+                container.appendChild(itemEl);
+            });
+        }
+
+        // --- 5. 【コア機能】予測と実績の帳尻合わせ ---
+        function openAdjustPanel(id, defaultAmount) {
+            currentAdjustingId = id;
+            document.getElementById('adjust-actual-amount').value = defaultAmount;
+            document.getElementById('adjust-panel').style.display = "block";
+            document.getElementById('adjust-panel').scrollIntoView({ behavior: 'smooth' });
+            
+            document.getElementById('adjust-confirm-btn').onclick = confirmTrackBalance;
+        }
+
+        function closeAdjustPanel() {
+            document.getElementById('adjust-panel').style.display = "none";
+            currentAdjustingId = null;
+        }
+
+        function confirmTrackBalance() {
+            const actualAmount = Number(document.getElementById('adjust-actual-amount').value);
+            const item = planItems.find(p => p.id === currentAdjustingId);
+            if (!item) return;
+
+            // 予測が現実になったので、実際の金額で財布の残高を更新する
+            if (item.type === 'income') {
+                walletData[item.asset] += actualAmount; // 収入確定 -> 残高増
+            } else if (item.type === 'expense') {
+                walletData[item.asset] -= actualAmount; // 出費確定 -> 残高減
+            }
+
+            item.isCompleted = true; // 予測リストから除外フラグ
+
+            localStorage.setItem('ore_wallet_data', JSON.stringify(walletData));
+            localStorage.setItem('ore_plan_items', JSON.stringify(planItems));
+
+            loadWalletInputs();
+            renderPlans();
+            calculateBudget();
+            closeAdjustPanel();
+            alert(`「${item.name}」を確定金額 ¥${actualAmount.toLocaleString()} で帳尻合わせしました！`);
+        }
+
+        // --- 6. 今日の予算の計算ロジック ---
+        function calculateBudget() {
+            const totalAssets = walletData.bank + walletData.cash + walletData.paypay + walletData.hidden;
+            const fixedExpenses = walletData.cardThis + walletData.wifi + walletData.mobile;
+
+            let pendingIncome = 0;
+            let pendingExpense = 0;
+
+            planItems.forEach(item => {
+                if (!item.isCompleted) {
+                    if (item.type === 'income') pendingIncome += item.amount;
+                    else if (item.type === 'expense') pendingExpense += item.amount;
+                }
+            });
+
+            // 計算式: (今の全財産 + これから入る予測収入) - (確定の今月固定費・カード引落 + これからの予定出費)
+            const availableThisMonth = (totalAssets + pendingIncome) - (fixedExpenses + pendingExpense);
+
+            // 残り日数の算出
+            const today = new Date();
+            const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            const daysLeft = lastDayOfMonth.getDate() - today.getDate() + 1; // 今日を含む
+
+            const availableToday = daysLeft > 0 ? Math.floor(availableThisMonth / daysLeft) : availableThisMonth;
+            const availableThisWeek = availableToday * 7;
+
+            // 画面表示への反映
+            document.getElementById('calc-month').innerText = `¥${availableThisMonth.toLocaleString()}`;
+            document.getElementById('calc-today').innerText = `¥${availableToday.toLocaleString()}`;
+            document.getElementById('calc-week').innerText = `¥${availableThisWeek.toLocaleString()}`;
+            document.getElementById('days-left').innerText = daysLeft;
+        }
+    </script>
 </body>
 </html>
