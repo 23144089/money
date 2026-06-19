@@ -85,6 +85,8 @@ function initApp() {
     window.clearSimulationEndDate = clearSimulationEndDate;
     window.changeMonth = changeMonth;
     window.deleteHistoryItem = deleteHistoryItem;
+    window.exportData = exportData;
+    window.importData = importData;
 
     const headerTitle = document.querySelector('header h1');
     if (headerTitle) {
@@ -1274,6 +1276,69 @@ function saveToStorage() {
         console.error("Storage error:", e);
         showToast("データの保存に失敗しました");
     }
+}
+
+// --- データ同期（書き出し・取り込み）機能 ---
+
+function exportData() {
+    const data = {
+        wallet: walletData,
+        fixed: fixedCosts,
+        plans: planItems,
+        history: historyLogs,
+        version: "1.0",
+        timestamp: new Date().toISOString()
+    };
+    
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    
+    // ダウンロード用のリンクを作成してクリック
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ore_budget_data_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showToast("ファイルをダウンロードしました");
+}
+
+function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = JSON.parse(e.target.result);
+            
+            if (!data.wallet || !data.plans) {
+                throw new Error("不正なデータ形式です");
+            }
+
+            if (!confirm("現在のデータが上書きされます。よろしいですか？")) return;
+
+            // データの復元
+            walletData = data.wallet;
+            fixedCosts = data.fixed || [];
+            planItems = data.plans || [];
+            historyLogs = data.history || [];
+
+            // ストレージに保存
+            saveToStorage();
+            
+            // アプリを再描画（リロードが確実）
+            alert("データの取り込みが完了しました。アプリを再起動します。");
+            location.reload();
+            
+        } catch (err) {
+            console.error(err);
+            alert("データの取り込みに失敗しました。正しいJSONファイルを選択してください。");
+        }
+    };
+    reader.readAsText(file);
 }
 
 // Safari等の互換性向上のためグローバルに明示的に露出

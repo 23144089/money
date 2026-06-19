@@ -116,6 +116,20 @@
                 </div>
                 <div id="fixed-costs-list"></div>
             </div>
+
+            <div class="section-title">データ管理（PC・スマホ同期用）</div>
+            <div class="card" style="padding: 15px; text-align: center;">
+                <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px;">
+                    ファイルを書き出して別の端末で読み込むことで、データを同期できます。
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <button class="btn btn-sm" onclick="exportData()" style="background: var(--primary); padding: 10px;">データを書き出す</button>
+                    <label class="btn btn-sm" style="background: var(--success); padding: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center;">
+                        データを取り込む
+                        <input type="file" id="import-file" style="display: none;" onchange="importData(event)">
+                    </label>
+                </div>
+            </div>
         </div>
 
         <div id="page-plans" class="app-page">
