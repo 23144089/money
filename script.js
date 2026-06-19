@@ -1,7 +1,20 @@
 // --- 1. データ構造の初期化 ---
 let walletData = JSON.parse(localStorage.getItem('ore_wallet_pro_wallet')) || {
-    bank: 0, cash: 0, paypay: 0, pasmo: 0, hidden: 0, cardRequests: {}
+    bank: 0, cash: 0, paypay: 0, pasmo: 0, hidden: 0, cardRequests: {},
+    simulationEndDate: null // 追加：手動設定用のシミュレーション終了日
 };
+
+// デバッグログ用
+function debugLog(msg) {
+    console.log(msg);
+    const consoleEl = document.getElementById('debug-console');
+    if (consoleEl) {
+        // consoleEl.style.display = 'block'; // 必要なら表示
+        const time = new Date().toLocaleTimeString();
+        consoleEl.innerHTML = `<div>[${time}] ${msg}</div>` + consoleEl.innerHTML;
+        if (consoleEl.children.length > 20) consoleEl.lastElementChild.remove();
+    }
+}
 
 // データの互換性救済処理
 if (typeof walletData.cardRequest === 'number') {
@@ -51,7 +64,42 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initApp() {
-    window.setFixedType = setFixedType; // ここで定義
+    // Safari対策: すべてのグローバル関数を明示的にwindowに紐付ける
+    window.switchPage = switchPage;
+    window.addQuickExpense = addQuickExpense;
+    window.adjustAssetAmount = adjustAssetAmount;
+    window.adjustCardAmount = adjustCardAmount;
+    window.setFixedType = setFixedType;
+    window.addFixedCostMaster = addFixedCostMaster;
+    window.deleteFixedCostMaster = deleteFixedCostMaster;
+    window.setPlanType = setPlanType;
+    window.setPlanAsset = setPlanAsset;
+    window.savePlanItem = savePlanItem;
+    window.cancelPlanEdit = cancelPlanEdit;
+    window.editPlanItem = editPlanItem;
+    window.deletePlanItem = deletePlanItem;
+    window.completePlanDirectly = completePlanDirectly;
+    window.closeAdjustPanel = closeAdjustPanel;
+    window.confirmPlanCompletion = confirmPlanCompletion;
+    window.setSimulationEndDate = setSimulationEndDate;
+    window.clearSimulationEndDate = clearSimulationEndDate;
+    window.changeMonth = changeMonth;
+    window.deleteHistoryItem = deleteHistoryItem;
+
+    // ヘッダー（OreBudgetロゴ）を5回タップでデバッグコンソール表示
+    const headerTitle = document.querySelector('header h1');
+    if (headerTitle) {
+        let debugTapCount = 0;
+        headerTitle.addEventListener('click', () => {
+            debugTapCount++;
+            if (debugTapCount >= 5) {
+                const dc = document.getElementById('debug-console');
+                if (dc) dc.style.display = (dc.style.display === 'block') ? 'none' : 'block';
+                showToast("Debug Mode Toggle");
+            }
+        });
+    }
+
     try {
         generateFixedCostsToPlans(); 
         displayHeaderDate();
@@ -459,6 +507,7 @@ function cancelPlanEdit() {
 }
 
 function deletePlanItem(id) {
+    debugLog("deletePlanItem attempt: " + id);
     planItems = planItems.filter(item => item.id !== id);
     saveToStorage();
     renderPlans();
@@ -467,10 +516,34 @@ function deletePlanItem(id) {
     checkOverduePlans();
 }
 
+function setSimulationEndDate() {
+    const val = document.getElementById('simulation-end-date').value;
+    walletData.simulationEndDate = val || null;
+    saveToStorage();
+    calculateBudget();
+    renderCalendar();
+    showToast("シミュレーション終了日を保存しました");
+}
+
+function clearSimulationEndDate() {
+    walletData.simulationEndDate = null;
+    document.getElementById('simulation-end-date').value = "";
+    saveToStorage();
+    calculateBudget();
+    renderCalendar();
+    showToast("終了日をリセットしました");
+}
+
 function renderPlans() {
+    debugLog("renderPlans starting...");
     const container = document.getElementById('plans-list-container');
     if (!container) return;
     container.innerHTML = "";
+
+    // シミュレーション終了日の初期値をセット
+    if (document.getElementById('simulation-end-date')) {
+        document.getElementById('simulation-end-date').value = walletData.simulationEndDate || "";
+    }
     
     const activePlans = planItems.filter(item => !item.isCompleted).sort((a,b) => {
         return new Date(a.date.replace(/-/g, '/')) - new Date(b.date.replace(/-/g, '/'));
@@ -502,24 +575,43 @@ function renderPlans() {
             const amtClass = item.type === 'income' ? 'income' : 'expense';
             const assetLabel = getAssetLabel(item.asset);
 
-            div.innerHTML = `
+            const content = `
                 <div class="plan-info">
                     <div class="name">${item.name} <span style="font-size:0.7rem; background:#edf2f7; padding:2px 4px; border-radius:4px;">${assetLabel}</span></div>
                     <div class="details">予定日: ${item.date}</div>
                 </div>
                 <div class="plan-action">
                     <span class="plan-amount ${amtClass}">${sign}¥${item.amount.toLocaleString()}</span>
-                    <button class="btn btn-sm btn-success" onclick="completePlanDirectly('${item.id}')">確</button>
-                    <button class="btn btn-sm" style="background:#4a5568;" onclick="editPlanItem('${item.id}')">編</button>
-                    <button class="btn btn-sm" style="background:var(--danger);" onclick="deletePlanItem('${item.id}')">削</button>
+                    <button class="btn btn-sm btn-success js-complete-btn">確</button>
+                    <button class="btn btn-sm js-edit-btn" style="background:#4a5568;">編</button>
+                    <button class="btn btn-sm js-delete-btn" style="background:var(--danger);">削</button>
                 </div>
             `;
+            div.innerHTML = content;
             container.appendChild(div);
+
+            // Safari(iPhone)対策：onclick属性ではなくaddEventListenerを使い、touchstartで即座に反応させる
+            const compBtn = div.querySelector('.js-complete-btn');
+            const editBtn = div.querySelector('.js-edit-btn');
+            const delBtn = div.querySelector('.js-delete-btn');
+
+            const fastClick = (el, fn) => {
+                el.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    debugLog(`Action: ${el.innerText} for ${item.name}`);
+                    fn();
+                });
+            };
+
+            fastClick(compBtn, () => window.completePlanDirectly(item.id));
+            fastClick(editBtn, () => window.editPlanItem(item.id));
+            fastClick(delBtn, () => window.deletePlanItem(item.id));
         });
     }
 }
 
 function openAdjustPanel(id, defaultAmount) {
+    debugLog("openAdjustPanel called for id: " + id);
     currentAdjustingPlanId = id;
     document.getElementById('adjust-actual-amount').value = defaultAmount;
     document.getElementById('adjust-panel').style.display = "block";
@@ -529,8 +621,12 @@ function openAdjustPanel(id, defaultAmount) {
 
 // １ステップで確定反映する新関数
 function completePlanDirectly(id) {
+    console.log("completePlanDirectly called with id:", id);
     const item = planItems.find(p => p.id === id);
-    if (!item) return;
+    if (!item) {
+        console.error("item not found for id:", id);
+        return;
+    }
 
     let actualAmount = item.amount;
     let undoData = {}; 
@@ -662,17 +758,24 @@ function calculateBudget() {
     const today = new Date();
     today.setHours(0,0,0,0);
     
-    // 全予定の中で一番遠い日付を探す
-    let maxSimulationDate = new Date(today);
-    planItems.forEach(item => {
-        if (!item.isCompleted) {
-            const itemDate = new Date(item.date.replace(/-/g, '/'));
-            itemDate.setHours(0,0,0,0);
-            if (itemDate > maxSimulationDate) {
-                maxSimulationDate = new Date(itemDate);
+    // シミュレーション終了日の決定
+    let maxSimulationDate;
+    if (walletData.simulationEndDate) {
+        maxSimulationDate = new Date(walletData.simulationEndDate.replace(/-/g, '/'));
+    } else {
+        // 設定がない場合は従来通り一番遠い予定日
+        maxSimulationDate = new Date(today);
+        planItems.forEach(item => {
+            if (!item.isCompleted) {
+                const itemDate = new Date(item.date.replace(/-/g, '/'));
+                itemDate.setHours(0,0,0,0);
+                if (itemDate > maxSimulationDate) {
+                    maxSimulationDate = new Date(itemDate);
+                }
             }
-        }
-    });
+        });
+    }
+    maxSimulationDate.setHours(0,0,0,0);
 
     let tempAssets = totalAssets;
     let checkDate = new Date(today);

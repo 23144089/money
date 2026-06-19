@@ -8,6 +8,7 @@
 </head>
 <body>
     <div id="toast" class="toast"></div>
+    <div id="debug-console"></div>
 
     <div class="app-container">
         <header>
@@ -148,6 +149,17 @@
 
             <div class="section-title">⚖️ 未来の予測・固定費リスト（月別表示）</div>
             <p class="section-desc">固定費も自動展開されます。月別の金額調整(編)や削除(削)が可能です。</p>
+            
+            <div class="card" style="margin-bottom: 20px;">
+                <div class="label" style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">📅 「自由に使えるお金」の計算終了日を設定</div>
+                <div style="display: flex; gap: 8px;">
+                    <input type="date" id="simulation-end-date" style="flex: 1; padding: 6px; border-radius: 6px; border: 1px solid var(--border-color);">
+                    <button class="btn btn-sm" onclick="setSimulationEndDate()">保存</button>
+                    <button class="btn btn-sm" onclick="clearSimulationEndDate()" style="background:#718096;">リセット</button>
+                </div>
+                <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;">※未入力の場合は「一番先の予定日」を自動で使います</p>
+            </div>
+
             <div id="plans-list-container"></div>
 
             <div id="adjust-panel" class="adjustment-box">
