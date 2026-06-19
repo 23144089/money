@@ -19,7 +19,7 @@
 body {
     background-color: var(--bg-color);
     color: var(--text-main);
-    padding-bottom: 80px;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom)); /* iPhoneのSafe Areaを考慮して余白を動的に広げる */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -165,7 +165,22 @@ header h1:active {
 .cal-amt.total { color: #4a5568; border-top: 1px dotted #e2e8f0; font-weight: 800; }
 
 /* ナビゲーションバー */
-.nav-bar { position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 500px; height: 64px; background-color: var(--card-bg); border-top: 1px solid var(--border-color); display: flex; justify-content: space-around; align-items: center; z-index: 100; }
+.nav-bar { 
+    position: fixed; 
+    bottom: 0; 
+    left: 50%; 
+    transform: translateX(-50%); 
+    width: 100%; 
+    max-width: 500px; 
+    height: calc(64px + env(safe-area-inset-bottom)); /* iPhoneのホームバー分だけ高くする */
+    padding-bottom: env(safe-area-inset-bottom);      /* 下側に余白を作る */
+    background-color: var(--card-bg); 
+    border-top: 1px solid var(--border-color); 
+    display: flex; 
+    justify-content: space-around; 
+    align-items: center; 
+    z-index: 100; 
+}
 .nav-item { display: flex; flex-direction: column; align-items: center; color: var(--text-muted); background: none; border: none; font-size: 0.7rem; cursor: pointer; width: 20%; height: 100%; justify-content: center; }
 .nav-item.active { color: var(--primary); font-weight: 700; }
 .nav-item span { font-size: 1.1rem; margin-bottom: 2px; }
