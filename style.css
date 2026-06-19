@@ -29,6 +29,12 @@ body {
     width: 100%;
     max-width: 500px;
     padding: 12px;
+    box-sizing: border-box; /* 念のため追加 */
+}
+
+/* Safariで横幅が狭まる対策 */
+body {
+    -webkit-text-size-adjust: 100%; /* Safariの自動サイズ調整を抑制 */
 }
 
 header {
@@ -69,7 +75,15 @@ header h1 { font-size: 1.3rem; font-weight: 800; }
 .sub-amounts .val { font-size: 1rem; font-weight: 700; }
 
 .section-title { font-size: 0.95rem; font-weight: 700; margin: 20px 0 8px 4px; color: var(--text-main); }
-.card { background: var(--card-bg); border-radius: 12px; padding: 14px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.card { 
+    background: var(--card-bg); 
+    border-radius: 12px; 
+    padding: 14px; 
+    margin-bottom: 12px; 
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05); 
+    width: 100%; /* 横幅を強制 */
+    box-sizing: border-box;
+}
 
 /* 残高・カード調整ボックス用 */
 .asset-adjust-box {
@@ -112,7 +126,8 @@ header h1 { font-size: 1.3rem; font-weight: 800; }
 .btn-toggle { flex: 1; padding: 6px; font-size: 0.8rem; border: 1px solid var(--border-color); background: #fff; border-radius: 6px; cursor: pointer; font-weight: 600; color: var(--text-muted); }
 .btn-toggle.active { background: var(--primary); color: white; border-color: var(--primary); }
 #btn-type-income.active { background: var(--success); border-color: var(--success); }
-#btn-type-expense.active { background: var(--danger); border-color: var(--danger); }
+#btn-type-expense.active, #btn-fixed-type-expense.active { background: var(--danger); border-color: var(--danger); }
+#btn-fixed-type-income.active { background: var(--success); border-color: var(--success); }
 
 /* アイテム行 */
 .plan-item, .fixed-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--border-color); }

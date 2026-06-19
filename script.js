@@ -15,15 +15,22 @@ if (!walletData.generatedFixedCosts) walletData.generatedFixedCosts = [];
 
 // 固定費マスタ
 let fixedCosts = JSON.parse(localStorage.getItem('ore_wallet_pro_fixed')) || [
-    { id: 1, name: "Wi-Fi代", amount: 4000, day: 25 },
-    { id: 2, name: "スマホ代", amount: 4500, day: 27 }
+    { id: 1, name: "Wi-Fi代", amount: 4000, day: 25, type: 'expense' },
+    { id: 2, name: "スマホ代", amount: 4500, day: 27, type: 'expense' },
+    { id: 3, name: "仕送り", amount: 50000, day: 25, type: 'income' }
 ];
+
+// データの正規化: 既存データにtypeがない場合はexpenseとする
+fixedCosts.forEach(item => {
+    if (!item.type) item.type = 'expense';
+});
 
 let planItems = JSON.parse(localStorage.getItem('ore_wallet_pro_plans')) || [];
 let historyLogs = JSON.parse(localStorage.getItem('ore_wallet_pro_history')) || [];
 
 let currentPlanType = 'income';
 let currentPlanAsset = 'cash';
+let currentFixedType = 'expense'; // 追加: 固定費マスタ用のタイプ
 let currentAdjustingPlanId = null;
 let calendarViewDate = new Date();
 
@@ -44,6 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initApp() {
+    window.setFixedType = setFixedType; // ここで定義
     try {
         generateFixedCostsToPlans(); 
         displayHeaderDate();
@@ -273,6 +281,12 @@ function adjustCardAmount(type) {
     showToast(`${labelStr}カード請求額を確定しました`);
 }
 
+function setFixedType(type) {
+    currentFixedType = type;
+    document.getElementById('btn-fixed-type-income').classList.toggle('active', type === 'income');
+    document.getElementById('btn-fixed-type-expense').classList.toggle('active', type === 'expense');
+}
+
 function addFixedCostMaster() {
     const nameInput = document.getElementById('new-fixed-name');
     const amtInput = document.getElementById('new-fixed-amount');
@@ -284,7 +298,13 @@ function addFixedCostMaster() {
 
     if (!name || !amount) return showToast("項目名と金額を入力してください");
 
-    fixedCosts.push({ id: Date.now(), name: name, amount: amount, day: day });
+    fixedCosts.push({ 
+        id: Date.now(), 
+        name: name, 
+        amount: amount, 
+        day: day,
+        type: currentFixedType 
+    });
     saveToStorage();
     generateFixedCostsToPlans();
     renderFixedCostsMaster();
@@ -309,10 +329,14 @@ function renderFixedCostsMaster() {
     fixedCosts.forEach(item => {
         const div = document.createElement('div');
         div.className = "fixed-item";
+        const typeLabel = item.type === 'income' ? '<span style="color:var(--success); font-size:0.7rem;">[収入]</span>' : '<span style="color:var(--danger); font-size:0.7rem;">[支出]</span>';
+        const amtClass = item.type === 'income' ? 'income' : 'expense';
+        const sign = item.type === 'income' ? '＋' : '－';
+        
         div.innerHTML = `
-            <span class="name">${item.name} <span style="font-size:0.7rem; color:var(--text-muted);">(毎月${item.day}日請求)</span></span>
+            <span class="name">${typeLabel} ${item.name} <span style="font-size:0.7rem; color:var(--text-muted);">(毎月${item.day}日)</span></span>
             <div class="plan-action">
-                <span class="plan-amount expense">¥${item.amount.toLocaleString()}</span>
+                <span class="plan-amount ${amtClass}">${sign}¥${item.amount.toLocaleString()}</span>
                 <button class="btn btn-sm" style="background:var(--danger);" onclick="deleteFixedCostMaster(${item.id})">削除</button>
             </div>
         `;
@@ -322,7 +346,8 @@ function renderFixedCostsMaster() {
 
 function generateFixedCostsToPlans() {
     const today = new Date();
-    for (let i = -1; i <= 1; i++) {
+    // 過去1ヶ月から将来12ヶ月分まで生成するように拡大
+    for (let i = -1; i <= 12; i++) {
         const targetDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
         const y = targetDate.getFullYear();
         const m = targetDate.getMonth() + 1;
@@ -337,11 +362,11 @@ function generateFixedCostsToPlans() {
 
                 planItems.push({
                     id: 'fixed-' + genKey + '-' + Date.now(),
-                    name: `[固定費] ${master.name}`,
+                    name: `[固定] ${master.name}`,
                     date: dateStr,
-                    type: 'expense',
+                    type: master.type || 'expense', // 固定費マスタ自体のタイプを使用
                     amount: master.amount,
-                    asset: 'card', 
+                    asset: master.type === 'income' ? 'bank' : 'card', // 収入はとりあえず銀行、支出はカード
                     isCompleted: false,
                     isFixed: true,
                     genKey: genKey
@@ -652,38 +677,36 @@ function calculateBudget() {
     let tempAssets = totalAssets;
     let checkDate = new Date(today);
     
-    // 最終予定日時点での残高をシミュレーション
+    // 今日から対象日までの全予定をシミュレート
     while (checkDate <= maxSimulationDate) {
-        if (checkDate > today) {
-            const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+        const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+        
+        planItems.forEach(item => {
+            if (!item.isCompleted && item.asset !== 'card') {
+                const itemDate = new Date(item.date.replace(/-/g, '/'));
+                itemDate.setHours(0, 0, 0, 0);
+                if (itemDate.getTime() === checkDate.getTime()) {
+                    if (item.type === 'income') tempAssets += item.amount;
+                    else tempAssets -= item.amount;
+                }
+            }
+        });
+        
+        if (checkDate.getDate() === 27) {
+            const y = checkDate.getFullYear();
+            const m = checkDate.getMonth() + 1;
+            const cardKey = `${y}-${String(m).padStart(2, '0')}-27`;
+            let cardDebt = walletData.cardRequests[cardKey] || 0;
             
             planItems.forEach(item => {
-                if (!item.isCompleted && item.asset !== 'card') {
-                    const itemDate = new Date(item.date.replace(/-/g, '/'));
-                    itemDate.setHours(0, 0, 0, 0);
-                    if (itemDate.getTime() === checkDate.getTime()) {
-                        if (item.type === 'income') tempAssets += item.amount;
-                        else tempAssets -= item.amount;
+                if (!item.isCompleted && item.asset === 'card') {
+                    if (getCardKeyForPlan(item) === cardKey) {
+                        if (item.type === 'income') cardDebt -= item.amount;
+                        else cardDebt += item.amount;
                     }
                 }
             });
-            
-            if (checkDate.getDate() === 27) {
-                const y = checkDate.getFullYear();
-                const m = checkDate.getMonth() + 1;
-                const cardKey = `${y}-${String(m).padStart(2, '0')}-27`;
-                let cardDebt = walletData.cardRequests[cardKey] || 0;
-                
-                planItems.forEach(item => {
-                    if (!item.isCompleted && item.asset === 'card') {
-                        if (getCardKeyForPlan(item) === cardKey) {
-                            if (item.type === 'income') cardDebt -= item.amount;
-                            else cardDebt += item.amount;
-                        }
-                    }
-                });
-                tempAssets -= cardDebt;
-            }
+            tempAssets -= cardDebt;
         }
         checkDate.setDate(checkDate.getDate() + 1);
     }
@@ -807,23 +830,26 @@ function createDayCell(date, isOtherMonth, container) {
 
     let currentAssets = (walletData.bank || 0) + (walletData.cash || 0) + (walletData.paypay || 0) + (walletData.pasmo || 0) + (walletData.hidden || 0);
 
+    // 未来シミュレーション
     if (compareDate > today) {
         let tempAssets = currentAssets;
         
-        planItems.forEach(item => {
-            if (!item.isCompleted && item.asset !== 'card') {
-                const itemDate = new Date(item.date.replace(/-/g, '/'));
-                itemDate.setHours(0, 0, 0, 0);
-                if (itemDate >= today && itemDate <= compareDate) {
-                    if (item.type === 'income') tempAssets += item.amount;
-                    else tempAssets -= item.amount;
-                }
-            }
-        });
-        
         let checkDate = new Date(today);
-        checkDate.setDate(checkDate.getDate() + 1);
+        // 今日から対象日までの全予定を反映
         while (checkDate <= compareDate) {
+            const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
+            
+            planItems.forEach(item => {
+                if (!item.isCompleted && item.asset !== 'card') {
+                    const itemDate = new Date(item.date.replace(/-/g, '/'));
+                    itemDate.setHours(0, 0, 0, 0);
+                    if (itemDate.getTime() === checkDate.getTime()) {
+                        if (item.type === 'income') tempAssets += item.amount;
+                        else tempAssets -= item.amount;
+                    }
+                }
+            });
+            
             if (checkDate.getDate() === 27) {
                 const y = checkDate.getFullYear();
                 const m = checkDate.getMonth() + 1;
@@ -875,17 +901,27 @@ function createDayCell(date, isOtherMonth, container) {
     }
 
     let html = `<div class="day-num">${date.getDate()}</div>`;
-    const inlineTextStyle = "font-size: 0.58rem; text-align: center; font-weight: bold; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block;";
+    
+    // 文字数に応じてフォントサイズを調整する関数（クロージャ的に定義）
+    const getShrinkStyle = (text, baseSize) => {
+        let size = baseSize;
+        if (text.length > 7) size = baseSize * 0.75;
+        else if (text.length > 5) size = baseSize * 0.85;
+        return `font-size: ${size}rem; text-align: center; font-weight: bold; margin-top: 1px; white-space: nowrap; display: block;`;
+    };
 
     if (dayInc > 0) {
-        html += `<span style="color: #48bb78; ${inlineTextStyle}">+${dayInc.toLocaleString()}</span>`;
+        const txt = `+${dayInc.toLocaleString()}`;
+        html += `<span style="color: #48bb78; ${getShrinkStyle(txt, 0.58)}">${txt}</span>`;
     }
     if (dayExp > 0) {
-        html += `<span style="color: #e53e3e; ${inlineTextStyle}">-${dayExp.toLocaleString()}</span>`;
+        const txt = `-${dayExp.toLocaleString()}`;
+        html += `<span style="color: #e53e3e; ${getShrinkStyle(txt, 0.58)}">${txt}</span>`;
     }
     
     const amtColor = currentAssets >= 20000 ? '#2d3748' : '#e53e3e';
-    html += `<span style="color: ${amtColor}; font-size: 0.63rem; font-weight: bold; text-align: center; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; display: block;">¥${currentAssets.toLocaleString()}</span>`;
+    const totalTxt = `¥${currentAssets.toLocaleString()}`;
+    html += `<span style="color: ${amtColor}; ${getShrinkStyle(totalTxt, 0.63)} margin-top: 2px;">${totalTxt}</span>`;
 
     cell.innerHTML = html;
     container.appendChild(cell);
@@ -985,8 +1021,30 @@ function getAssetLabel(asset) {
 }
 
 function saveToStorage() {
-    localStorage.setItem('ore_wallet_pro_wallet', JSON.stringify(walletData));
-    localStorage.setItem('ore_wallet_pro_fixed', JSON.stringify(fixedCosts));
-    localStorage.setItem('ore_wallet_pro_plans', JSON.stringify(planItems));
-    localStorage.setItem('ore_wallet_pro_history', JSON.stringify(historyLogs));
+    try {
+        localStorage.setItem('ore_wallet_pro_wallet', JSON.stringify(walletData));
+        localStorage.setItem('ore_wallet_pro_fixed', JSON.stringify(fixedCosts));
+        localStorage.setItem('ore_wallet_pro_plans', JSON.stringify(planItems));
+        localStorage.setItem('ore_wallet_pro_history', JSON.stringify(historyLogs));
+    } catch (e) {
+        console.error("Storage error:", e);
+        showToast("データの保存に失敗しました");
+    }
 }
+
+// Safari等の互換性向上のためグローバルに明示的に露出
+window.completePlanDirectly = completePlanDirectly;
+window.deletePlanItem = deletePlanItem;
+window.editPlanItem = editPlanItem;
+window.deleteFixedCostMaster = deleteFixedCostMaster;
+window.addQuickExpense = addQuickExpense;
+window.adjustAssetAmount = adjustAssetAmount;
+window.adjustCardAmount = adjustCardAmount;
+window.addFixedCostMaster = addFixedCostMaster;
+window.savePlanItem = savePlanItem;
+window.cancelPlanEdit = cancelPlanEdit;
+window.changeMonth = changeMonth;
+window.switchPage = switchPage;
+window.deleteHistoryItem = deleteHistoryItem;
+window.confirmPlanCompletion = confirmPlanCompletion;
+window.closeAdjustPanel = closeAdjustPanel;
