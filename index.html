@@ -98,17 +98,21 @@
                 </div>
             </div>
 
-            <div class="section-title">🛠️ 毎月の固定収支マスタ（自動予測のひな形）</div>
+            <div class="section-title" id="fixed-form-title">🛠️ 毎月の固定収支マスタ（自動予測のひな形）</div>
             <div class="card">
+                <input type="hidden" id="edit-fixed-id" value="">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
                     <button id="btn-fixed-type-income" class="btn-toggle" onclick="setFixedType('income')" style="width:100%;">収入として登録</button>
                     <button id="btn-fixed-type-expense" class="btn-toggle active" onclick="setFixedType('expense')" style="width:100%;">支出として登録</button>
                 </div>
-                <div style="display:grid; grid-template-columns: 1fr 80px 80px auto; gap: 4px; margin-bottom:12px;">
-                    <input type="text" id="new-fixed-name" placeholder="項目名" style="padding:6px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.8rem;">
-                    <input type="number" id="new-fixed-amount" placeholder="金額" style="padding:6px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.8rem;">
-                    <input type="number" id="new-fixed-day" placeholder="日" min="1" max="31" style="padding:6px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.8rem;">
-                    <button class="btn btn-sm" onclick="addFixedCostMaster()" style="padding:6px;">追加</button>
+                <div style="display:grid; grid-template-columns: 1fr 80px 50px auto; gap: 4px; margin-bottom:12px;">
+                    <input type="text" id="new-fixed-name" placeholder="項目名" style="padding:4px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.75rem;">
+                    <input type="number" id="new-fixed-amount" placeholder="金額" style="padding:4px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.75rem;">
+                    <input type="number" id="new-fixed-day" placeholder="日" min="1" max="31" style="padding:4px; border-radius:6px; border:1px solid #e2e8f0; font-size:0.75rem;">
+                    <button id="btn-submit-fixed" class="btn btn-sm" onclick="addFixedCostMaster()" style="padding:4px; font-size:0.75rem;">追加</button>
+                </div>
+                <div id="btn-cancel-edit-fixed" style="display:none; text-align:center; margin-bottom:10px;">
+                    <button class="btn btn-sm" onclick="cancelFixedEdit()" style="background:#4a5568; padding:4px 12px; font-size:0.75rem;">キャンセル</button>
                 </div>
                 <div id="fixed-costs-list"></div>
             </div>

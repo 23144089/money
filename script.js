@@ -348,6 +348,8 @@ function addFixedCostMaster() {
     const nameInput = document.getElementById('new-fixed-name');
     const amtInput = document.getElementById('new-fixed-amount');
     const dayInput = document.getElementById('new-fixed-day');
+    const editIdEl = document.getElementById('edit-fixed-id');
+    const editId = editIdEl ? editIdEl.value : "";
 
     const name = nameInput.value;
     const amount = Number(amtInput.value);
@@ -355,28 +357,145 @@ function addFixedCostMaster() {
 
     if (!name || !amount) return showToast("項目名と金額を入力してください");
 
-    fixedCosts.push({ 
-        id: Date.now(), 
-        name: name, 
-        amount: amount, 
-        day: day,
-        type: currentFixedType 
-    });
+    if (editId && editId !== "") {
+        debugLog("Saving edited Fixed Cost Master ID: " + editId);
+        // 編集モード
+        const item = fixedCosts.find(f => f.id == editId);
+        if (item) {
+            item.name = name;
+            item.amount = amount;
+            item.day = day;
+            item.type = currentFixedType;
+            
+            // 未完了の予測も即時反映
+            planItems.forEach(p => {
+                if (p.isFixed && !p.isCompleted) {
+                    const parts = p.genKey.split('-');
+                    const masterId = parts[parts.length - 1];
+                    if (masterId == editId) {
+                        p.name = `[固定] ${name}`;
+                        p.amount = amount;
+                    }
+                }
+            });
+            showToast("マスタの変更を保存しました");
+        } else {
+            debugLog("Error: Item to edit not found in fixedCosts");
+        }
+        // ここで入力欄をクリアしてIDをリセットし、表示を「追加」に戻す
+        cancelFixedEdit();
+    } else {
+        debugLog("Adding new Fixed Cost Master");
+        // 新規追加モード
+        fixedCosts.push({ 
+            id: Date.now(), 
+            name: name, 
+            amount: amount, 
+            day: day,
+            type: currentFixedType 
+        });
+        // 追加後もクリア
+        nameInput.value = "";
+        amtInput.value = "";
+        dayInput.value = "25";
+        showToast("マスタに追加しました");
+    }
+
     saveToStorage();
-    generateFixedCostsToPlans();
+    if (!editId || editId === "") generateFixedCostsToPlans(); 
+    
+    // 表示の更新
     renderFixedCostsMaster();
     renderPlans();
     calculateBudget();
     renderCalendar();
-    nameInput.value = "";
-    amtInput.value = "";
-    dayInput.value = "";
+    loadWalletInputs(); // 画面上部の資産残高なども最新状態にする
 }
 
+function editFixedCostMaster(id) {
+    debugLog("editFixedCostMaster attempt for id: " + id);
+    const item = fixedCosts.find(f => f.id == id);
+    if (!item) {
+        debugLog("Error: Fixed cost master not found for id: " + id);
+        return;
+    }
+
+    // HTML側のID名に合わせて値をセット
+    const nameEl = document.getElementById('new-fixed-name');
+    const amtEl = document.getElementById('new-fixed-amount');
+    const dayEl = document.getElementById('new-fixed-day');
+    const editIdEl = document.getElementById('edit-fixed-id');
+
+    if (editIdEl) {
+        editIdEl.value = item.id;
+        debugLog("Form setup: edit-fixed-id set to " + editIdEl.value);
+    }
+    if (nameEl) nameEl.value = item.name;
+    if (amtEl) amtEl.value = item.amount;
+    if (dayEl) dayEl.value = item.day;
+    setFixedType(item.type || 'expense');
+
+    const titleEl = document.getElementById('fixed-form-title');
+    const submitBtn = document.getElementById('btn-submit-fixed');
+    const cancelBtn = document.getElementById('btn-cancel-edit-fixed');
+
+    if (titleEl) titleEl.innerHTML = "🛠️ 固定費マスタの編集";
+    if (submitBtn) submitBtn.innerText = "変更を保存";
+    if (cancelBtn) cancelBtn.style.display = "block";
+    
+    // フォームまでスクロール
+    if (titleEl) titleEl.scrollIntoView({ behavior: 'smooth' });
+}
+
+function cancelFixedEdit() {
+    debugLog("Resetting Fixed Edit form to Add mode");
+    document.getElementById('fixed-form-title').innerHTML = "🛠️ 毎月の固定収支マスタ（自動予測のひな形）";
+    const submitBtn = document.getElementById('btn-submit-fixed');
+    if (submitBtn) submitBtn.innerText = "追加";
+    document.getElementById('btn-cancel-edit-fixed').style.display = "none";
+    
+    // 入力欄をすべて空にして ID をリセット
+    const editIdEl = document.getElementById('edit-fixed-id');
+    const nameEl = document.getElementById('new-fixed-name');
+    const amtEl = document.getElementById('new-fixed-amount');
+    const dayEl = document.getElementById('new-fixed-day');
+
+    if (editIdEl) editIdEl.value = "";
+    if (nameEl) nameEl.value = "";
+    if (amtEl) amtEl.value = "";
+    if (dayEl) dayEl.value = "25";
+}
+window.editFixedCostMaster = editFixedCostMaster;
+window.cancelFixedEdit = cancelFixedEdit;
+
 function deleteFixedCostMaster(id) {
-    fixedCosts = fixedCosts.filter(item => item.id !== id);
+    debugLog(`Deleting Fixed Cost Master ID: ${id}`);
+    
+    // 1. マスターから削除
+    fixedCosts = fixedCosts.filter(item => item.id != id);
+    
+    // 2. 未完了の未来予測（固定費由来）も一括削除
+    const beforeCount = planItems.length;
+    planItems = planItems.filter(p => {
+        // 固定費かつ、未完了かつ、このマスターIDに紐づくものを除外
+        if (p.isFixed && !p.isCompleted) {
+            // genKey は "YYYY-MM-ID" の形式
+            const parts = p.genKey.split('-');
+            const masterId = parts[parts.length - 1];
+            if (masterId == id) return false;
+        }
+        return true;
+    });
+    
+    const afterCount = planItems.length;
+    debugLog(`Associated plans deleted. Before: ${beforeCount}, After: ${afterCount}`);
+    
     saveToStorage();
     renderFixedCostsMaster();
+    renderPlans();
+    calculateBudget();
+    renderCalendar();
+    showToast("固定費マスタと関連する未完了の予測を削除しました");
 }
 
 function renderFixedCostsMaster() {
@@ -391,15 +510,29 @@ function renderFixedCostsMaster() {
         const sign = item.type === 'income' ? '＋' : '－';
         
         div.innerHTML = `
-            <span class="name">${typeLabel} ${item.name} <span style="font-size:0.7rem; color:var(--text-muted);">(毎月${item.day}日)</span></span>
+            <span class="name" style="font-size:0.8rem;">${typeLabel} ${item.name} <span style="font-size:0.7rem; color:var(--text-muted);">(毎月${item.day}日)</span></span>
             <div class="plan-action">
-                <span class="plan-amount ${amtClass}">${sign}¥${item.amount.toLocaleString()}</span>
-                <button class="btn btn-sm" style="background:var(--danger);" onclick="deleteFixedCostMaster(${item.id})">削除</button>
+                <span class="plan-amount ${amtClass}" style="font-size:0.8rem;">${sign}¥${item.amount.toLocaleString()}</span>
+                <button class="btn btn-sm" style="background:#4a5568; padding:4px 8px; font-size:0.75rem;" onclick="window.editFixedCostMaster('${item.id}')">編集</button>
+                <button class="btn btn-sm" style="background:var(--danger); padding:4px 8px; font-size:0.75rem;" onclick="window.deleteFixedCostMaster('${item.id}')">削除</button>
             </div>
         `;
         container.appendChild(div);
     });
 }
+/* DUPLICATED FUNCTION REMOVED */
+
+function cancelFixedEdit() {
+    document.getElementById('fixed-form-title').innerText = "固定費マスタの登録";
+    document.getElementById('btn-submit-fixed').innerText = "マスタに追加";
+    document.getElementById('btn-cancel-edit-fixed').style.display = "none";
+    document.getElementById('edit-fixed-id').value = "";
+    document.getElementById('fixed-name').value = "";
+    document.getElementById('fixed-amount').value = "";
+    document.getElementById('fixed-day').value = "25";
+}
+window.editFixedCostMaster = editFixedCostMaster;
+window.cancelFixedEdit = cancelFixedEdit;
 
 function generateFixedCostsToPlans() {
     const today = new Date();
@@ -518,13 +651,19 @@ function cancelPlanEdit() {
 function deletePlanItem(id) {
     debugLog("deletePlanItem attempt: " + id);
     if (!id) return debugLog("Error: Missing ID in deletePlanItem");
-    planItems = planItems.filter(item => item.id !== id);
+    const beforeCount = planItems.length;
+    // IDがStringかNumberか不明確なため、ゆるい比較を行う
+    planItems = planItems.filter(item => item.id != id);
+    const afterCount = planItems.length;
+    debugLog(`Deleted. Before: ${beforeCount}, After: ${afterCount}`);
+
     saveToStorage();
     renderPlans();
     calculateBudget();
     renderCalendar();
     checkOverduePlans();
 }
+window.deletePlanItem = deletePlanItem;
 
 function setSimulationEndDate() {
     const val = document.getElementById('simulation-end-date').value;
@@ -617,10 +756,11 @@ function openAdjustPanel(id, defaultAmount) {
 
 // １ステップで確定反映する新関数
 function completePlanDirectly(id) {
-    console.log("completePlanDirectly called with id:", id);
-    const item = planItems.find(p => p.id === id);
+    debugLog("completePlanDirectly called with id: " + id);
+    // 型不一致を避けるため == を使用
+    const item = planItems.find(p => p.id == id);
     if (!item) {
-        console.error("item not found for id:", id);
+        debugLog("Error: item not found for id: " + id);
         return;
     }
 
@@ -648,6 +788,7 @@ function completePlanDirectly(id) {
     }
 
     item.isCompleted = true;
+    debugLog("completePlanDirectly: Success - marked as completed.");
 
     historyLogs.unshift({
         id: Date.now(),
@@ -667,6 +808,8 @@ function completePlanDirectly(id) {
     checkOverduePlans();
     showToast(`「${item.name}」を確定しました`);
 }
+window.completePlanDirectly = completePlanDirectly;
+window.editPlanItem = editPlanItem;
 
 function closeAdjustPanel() {
     document.getElementById('adjust-panel').style.display = "none";
@@ -675,7 +818,7 @@ function closeAdjustPanel() {
 
 function confirmPlanCompletion() {
     const actualAmount = Number(document.getElementById('adjust-actual-amount').value);
-    const item = planItems.find(p => p.id === currentAdjustingPlanId);
+    const item = planItems.find(p => p.id == currentAdjustingPlanId);
     if (!item) return;
 
     let undoData = {}; 
@@ -1057,7 +1200,7 @@ function renderHistory() {
                     <span class="plan-amount ${amtClass}" style="font-size:0.95rem;">${sign}¥${log.amount.toLocaleString()}</span>
                 </div>
                 <div>
-                    <button class="btn btn-sm" style="background:var(--danger); padding:4px 6px;" onclick="deleteHistoryItem(${log.id})">削除</button>
+                    <button class="btn btn-sm" style="background:var(--danger); padding:4px 6px;" onclick="window.deleteHistoryItem('${log.id}')">削除</button>
                 </div>
             </div>
         `;
@@ -1066,7 +1209,7 @@ function renderHistory() {
 }
 
 function deleteHistoryItem(id) {
-    const log = historyLogs.find(l => l.id === id);
+    const log = historyLogs.find(l => l.id == id);
     if (!log) return;
 
     if (!confirm(`この履歴「${log.name}」を削除しますか？\n連動して財布の金額が自動で元に戻ります。`)) return;
@@ -1095,14 +1238,14 @@ function deleteHistoryItem(id) {
 
     // 2. 予定（予測）の未完了への戻し連動
     if (log.undoPlanId) {
-        const item = planItems.find(p => p.id === log.undoPlanId);
+        const item = planItems.find(p => p.id == log.undoPlanId);
         if (item) {
             item.isCompleted = false; 
         }
     }
 
     // 履歴データから削除
-    historyLogs = historyLogs.filter(l => l.id !== id);
+    historyLogs = historyLogs.filter(l => l.id != id);
 
     // ストレージ保存と全表示の更新
     saveToStorage();
