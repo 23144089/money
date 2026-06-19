@@ -86,16 +86,25 @@ function initApp() {
     window.changeMonth = changeMonth;
     window.deleteHistoryItem = deleteHistoryItem;
 
-    // ヘッダー（OreBudgetロゴ）を5回タップでデバッグコンソール表示
     const headerTitle = document.querySelector('header h1');
     if (headerTitle) {
         let debugTapCount = 0;
+        let lastTapTime = 0;
         headerTitle.addEventListener('click', () => {
+            const now = Date.now();
+            if (now - lastTapTime > 1000) debugTapCount = 0; // 1秒空いたらリセット
+            lastTapTime = now;
+            
             debugTapCount++;
+            debugLog(`Header tap count: ${debugTapCount}`);
             if (debugTapCount >= 5) {
                 const dc = document.getElementById('debug-console');
-                if (dc) dc.style.display = (dc.style.display === 'block') ? 'none' : 'block';
+                if (dc) {
+                    dc.style.display = (dc.style.display === 'block') ? 'none' : 'block';
+                    dc.style.pointerEvents = 'auto'; // 操作可能にする
+                }
                 showToast("Debug Mode Toggle");
+                debugTapCount = 0;
             }
         });
     }
@@ -508,6 +517,7 @@ function cancelPlanEdit() {
 
 function deletePlanItem(id) {
     debugLog("deletePlanItem attempt: " + id);
+    if (!id) return debugLog("Error: Missing ID in deletePlanItem");
     planItems = planItems.filter(item => item.id !== id);
     saveToStorage();
     renderPlans();
@@ -518,6 +528,7 @@ function deletePlanItem(id) {
 
 function setSimulationEndDate() {
     const val = document.getElementById('simulation-end-date').value;
+    debugLog("Setting simulation end date: " + val);
     walletData.simulationEndDate = val || null;
     saveToStorage();
     calculateBudget();
@@ -526,6 +537,7 @@ function setSimulationEndDate() {
 }
 
 function clearSimulationEndDate() {
+    debugLog("Clearing simulation end date");
     walletData.simulationEndDate = null;
     document.getElementById('simulation-end-date').value = "";
     saveToStorage();
@@ -541,8 +553,9 @@ function renderPlans() {
     container.innerHTML = "";
 
     // シミュレーション終了日の初期値をセット
-    if (document.getElementById('simulation-end-date')) {
-        document.getElementById('simulation-end-date').value = walletData.simulationEndDate || "";
+    const endInput = document.getElementById('simulation-end-date');
+    if (endInput) {
+        endInput.value = walletData.simulationEndDate || "";
     }
     
     const activePlans = planItems.filter(item => !item.isCompleted).sort((a,b) => {
@@ -582,30 +595,13 @@ function renderPlans() {
                 </div>
                 <div class="plan-action">
                     <span class="plan-amount ${amtClass}">${sign}¥${item.amount.toLocaleString()}</span>
-                    <button class="btn btn-sm btn-success js-complete-btn">確</button>
-                    <button class="btn btn-sm js-edit-btn" style="background:#4a5568;">編</button>
-                    <button class="btn btn-sm js-delete-btn" style="background:var(--danger);">削</button>
+                    <button class="btn btn-sm btn-success" onclick="window.completePlanDirectly('${item.id}')">確</button>
+                    <button class="btn btn-sm" style="background:#4a5568;" onclick="window.editPlanItem('${item.id}')">編</button>
+                    <button class="btn btn-sm" style="background:var(--danger);" onclick="window.deletePlanItem('${item.id}')">削</button>
                 </div>
             `;
             div.innerHTML = content;
             container.appendChild(div);
-
-            // Safari(iPhone)対策：onclick属性ではなくaddEventListenerを使い、touchstartで即座に反応させる
-            const compBtn = div.querySelector('.js-complete-btn');
-            const editBtn = div.querySelector('.js-edit-btn');
-            const delBtn = div.querySelector('.js-delete-btn');
-
-            const fastClick = (el, fn) => {
-                el.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    debugLog(`Action: ${el.innerText} for ${item.name}`);
-                    fn();
-                });
-            };
-
-            fastClick(compBtn, () => window.completePlanDirectly(item.id));
-            fastClick(editBtn, () => window.editPlanItem(item.id));
-            fastClick(delBtn, () => window.deletePlanItem(item.id));
         });
     }
 }
@@ -1008,9 +1004,11 @@ function createDayCell(date, isOtherMonth, container) {
     // 文字数に応じてフォントサイズを調整する関数（クロージャ的に定義）
     const getShrinkStyle = (text, baseSize) => {
         let size = baseSize;
-        if (text.length > 7) size = baseSize * 0.75;
+        // iPad/iPhone等の解像度も考慮し、より積極的に小さくする
+        if (text.length > 8) size = baseSize * 0.65;
+        else if (text.length > 7) size = baseSize * 0.75;
         else if (text.length > 5) size = baseSize * 0.85;
-        return `font-size: ${size}rem; text-align: center; font-weight: bold; margin-top: 1px; white-space: nowrap; display: block;`;
+        return `font-size: ${size}rem; text-align: center; font-weight: bold; margin-top: 1px; white-space: nowrap; display: block; overflow: visible; width: 100%;`;
     };
 
     if (dayInc > 0) {
