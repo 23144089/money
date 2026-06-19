@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <div id="toast" class="toast"></div>
 
     <div class="app-container">
         <header>
@@ -25,13 +26,16 @@
                 <div class="amount-large" id="calc-today">¥0</div>
                 <div class="sub-amounts">
                     <div>
-                        <div class="label">今週分 <span id="label-week-range" style="font-size:0.7rem; opacity:0.8;">(--〜--)</span></div>
+                        <div class="label">今週分 (目標)</div>
                         <div class="val" id="calc-week">¥0</div>
                     </div>
                     <div>
-                        <div class="label">今月自由に使える <span id="label-month-date" style="font-size:0.7rem; opacity:0.8;">(--末締)</span></div>
+                        <div class="label">自由に使える (<span id="days-left-count">0</span>日)</div>
                         <div class="val" id="calc-month">¥0</div>
                     </div>
+                </div>
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1); font-size: 0.8rem;">
+                    今週の実際の支出: <span id="actual-week-spent" style="font-weight: 700;">¥0</span>
                 </div>
             </div>
 
@@ -75,7 +79,10 @@
                     <div class="asset-info"><span class="name">🪙 隠し金</span><span class="val" id="calc-val-hidden">¥0</span></div>
                     <div class="adjust-input-group"><input type="number" id="actual-hidden" placeholder="実際の隠し金"><button class="btn btn-sm" onclick="adjustAssetAmount('hidden')">調整</button></div>
                 </div>
-                <span class="name"></span><div>PASMO残高: <span id="calc-val-pasmo">¥0</span></div>
+                <div class="asset-adjust-box">
+                    <div class="asset-info"><span class="name">🚃 PASMO残高</span><span class="val" id="calc-val-pasmo">¥0</span></div>
+                    <div class="adjust-input-group"><input type="number" id="actual-pasmo" placeholder="実際のPASMO"><button class="btn btn-sm" onclick="adjustAssetAmount('pasmo')">調整</button></div>
+                </div>
             </div>
 
             <div class="section-title">💳 クレジットカード請求額（今月・来月）</div>

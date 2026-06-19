@@ -27,6 +27,17 @@ let currentPlanAsset = 'cash';
 let currentAdjustingPlanId = null;
 let calendarViewDate = new Date();
 
+// トースト通知を表示する関数
+function showToast(message) {
+    const toast = document.getElementById('toast');
+    if (!toast) return;
+    toast.innerText = message;
+    toast.classList.add('show');
+    setTimeout(() => {
+        toast.classList.remove('show');
+    }, 2500);
+}
+
 // Safari対策: DOMContentLoaded を使用して確実に初期化
 document.addEventListener('DOMContentLoaded', function() {
     initApp();
@@ -117,7 +128,7 @@ function switchPage(pageId, button) {
 function addQuickExpense(method) {
     const amountInput = document.getElementById('quick-amount');
     const amount = Number(amountInput.value);
-    if (!amount || amount <= 0) return alert("金額を入力してください");
+    if (!amount || amount <= 0) return showToast("金額を入力してください");
 
     const today = new Date();
     const dateStr = today.toISOString().split('T')[0];
@@ -177,7 +188,7 @@ function addQuickExpense(method) {
     calculateBudget();
     renderCalendar();
     amountInput.value = "";
-    alert(`${logTitle}として ¥${amount.toLocaleString()} を反映しました！`);
+    showToast(`${logTitle} ¥${amount.toLocaleString()} 反映`);
 }
 
 function loadWalletInputs() {
@@ -201,7 +212,7 @@ function loadWalletInputs() {
 function adjustAssetAmount(assetKey) {
     const input = document.getElementById(`actual-${assetKey}`);
     const actualAmount = Number(input.value);
-    if (input.value === "" || actualAmount < 0) return alert("正しい実際の残高を入力してください");
+    if (input.value === "" || actualAmount < 0) return showToast("正しい残高を入力してください");
 
     const calculatedAmount = walletData[assetKey] || 0;
     const difference = actualAmount - calculatedAmount;
@@ -225,7 +236,7 @@ function adjustAssetAmount(assetKey) {
     calculateBudget();
     renderCalendar();
     input.value = "";
-    alert(`${getAssetLabel(assetKey)}の残高を実際の ¥${actualAmount.toLocaleString()} に合わせました。`);
+    showToast(`${getAssetLabel(assetKey)}残高を調整しました`);
 }
 
 function adjustCardAmount(type) {
@@ -235,7 +246,7 @@ function adjustCardAmount(type) {
 
     const input = document.getElementById(`actual-card-${type}`);
     const actualAmount = Number(input.value);
-    if (input.value === "" || actualAmount < 0) return alert("正しい請求額を入力してください");
+    if (input.value === "" || actualAmount < 0) return showToast("正しい請求額を入力してください");
 
     const calculatedAmount = walletData.cardRequests[targetKey] || 0;
     const difference = actualAmount - calculatedAmount;
@@ -259,7 +270,7 @@ function adjustCardAmount(type) {
     calculateBudget();
     renderCalendar();
     input.value = "";
-    alert(`${labelStr}のカード請求額を ¥${actualAmount.toLocaleString()} に確定しました。`);
+    showToast(`${labelStr}カード請求額を確定しました`);
 }
 
 function addFixedCostMaster() {
@@ -271,7 +282,7 @@ function addFixedCostMaster() {
     const amount = Number(amtInput.value);
     const day = Number(dayInput.value) || 27;
 
-    if (!name || !amount) return alert("項目名と金額を入力してください");
+    if (!name || !amount) return showToast("項目名と金額を入力してください");
 
     fixedCosts.push({ id: Date.now(), name: name, amount: amount, day: day });
     saveToStorage();
@@ -362,7 +373,7 @@ function savePlanItem() {
     const amount = Number(document.getElementById('plan-amount-input').value);
     const editId = document.getElementById('edit-plan-id').value;
 
-    if (!name || !date || !amount) return alert("項目名、日付、金額を入力してください");
+    if (!name || !date || !amount) return showToast("項目名、日付、金額を入力してください");
 
     if (editId) {
         const item = planItems.find(p => p.id == editId);
@@ -473,7 +484,7 @@ function renderPlans() {
                 </div>
                 <div class="plan-action">
                     <span class="plan-amount ${amtClass}">${sign}¥${item.amount.toLocaleString()}</span>
-                    <button class="btn btn-sm btn-success" onclick="openAdjustPanel('${item.id}', ${item.amount})">確定</button>
+                    <button class="btn btn-sm btn-success" onclick="completePlanDirectly('${item.id}')">確</button>
                     <button class="btn btn-sm" style="background:#4a5568;" onclick="editPlanItem('${item.id}')">編</button>
                     <button class="btn btn-sm" style="background:var(--danger);" onclick="deletePlanItem('${item.id}')">削</button>
                 </div>
@@ -489,6 +500,55 @@ function openAdjustPanel(id, defaultAmount) {
     document.getElementById('adjust-panel').style.display = "block";
     document.getElementById('adjust-panel').scrollIntoView({ behavior: 'smooth' });
     document.getElementById('adjust-confirm-btn').onclick = confirmPlanCompletion;
+}
+
+// １ステップで確定反映する新関数
+function completePlanDirectly(id) {
+    const item = planItems.find(p => p.id === id);
+    if (!item) return;
+
+    let actualAmount = item.amount;
+    let undoData = {}; 
+
+    if (item.type === 'income') {
+        if (item.asset === 'card') {
+            const targetKey = getCardKeyForPlan(item);
+            walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) - actualAmount;
+            undoData = { cardRequests: { [targetKey]: actualAmount } };
+        } else {
+            walletData[item.asset] = (walletData[item.asset] || 0) + actualAmount;
+            undoData = { [item.asset]: -actualAmount };
+        }
+    } else {
+        if (item.asset === 'card') {
+            const targetKey = getCardKeyForPlan(item);
+            walletData.cardRequests[targetKey] = (walletData.cardRequests[targetKey] || 0) + actualAmount;
+            undoData = { cardRequests: { [targetKey]: -actualAmount } };
+        } else {
+            walletData[item.asset] = (walletData[item.asset] || 0) - actualAmount;
+            undoData = { [item.asset]: actualAmount };
+        }
+    }
+
+    item.isCompleted = true;
+
+    historyLogs.unshift({
+        id: Date.now(),
+        date: item.date,
+        name: `[確定] ${item.name}`,
+        type: item.type,
+        amount: actualAmount,
+        asset: item.asset,
+        undoData: undoData,        
+        undoPlanId: item.id       
+    });
+
+    saveToStorage();
+    renderPlans();
+    calculateBudget();
+    renderCalendar();
+    checkOverduePlans();
+    showToast(`「${item.name}」を確定しました`);
 }
 
 function closeAdjustPanel() {
@@ -542,7 +602,7 @@ function confirmPlanCompletion() {
     renderCalendar();
     checkOverduePlans();
     closeAdjustPanel();
-    alert(`「${item.name}」を金額 ¥${actualAmount.toLocaleString()} で確定反映しました。`);
+    showToast(`「${item.name}」を確定しました`);
 }
 
 function checkOverduePlans() {
@@ -565,7 +625,7 @@ function checkOverduePlans() {
         div.className = "notification-item";
         div.innerHTML = `
             <span>📅 ${item.date} - ${item.name} (¥${item.amount.toLocaleString()})</span>
-            <button class="btn btn-sm btn-success" style="padding:2px 6px; font-size:0.7rem;" onclick="switchPage('plans', document.querySelectorAll('.nav-item')[2]); openAdjustPanel('${item.id}', ${item.amount});">今すぐ確定</button>
+            <button class="btn btn-sm btn-success" style="padding:2px 6px; font-size:0.7rem;" onclick="completePlanDirectly('${item.id}');">今すぐ確定</button>
         `;
         listContainer.appendChild(div);
     });
@@ -577,10 +637,8 @@ function calculateBudget() {
     const today = new Date();
     today.setHours(0,0,0,0);
     
-    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-    lastDayOfMonth.setHours(0,0,0,0);
-    
-    let maxSimulationDate = new Date(lastDayOfMonth);
+    // 全予定の中で一番遠い日付を探す
+    let maxSimulationDate = new Date(today);
     planItems.forEach(item => {
         if (!item.isCompleted) {
             const itemDate = new Date(item.date.replace(/-/g, '/'));
@@ -591,12 +649,10 @@ function calculateBudget() {
         }
     });
 
-    let minMargin = totalAssets - 20000; 
-    let bottomDate = new Date(today);
-    
     let tempAssets = totalAssets;
     let checkDate = new Date(today);
     
+    // 最終予定日時点での残高をシミュレーション
     while (checkDate <= maxSimulationDate) {
         if (checkDate > today) {
             const dateStr = `${checkDate.getFullYear()}-${String(checkDate.getMonth() + 1).padStart(2, '0')}-${String(checkDate.getDate()).padStart(2, '0')}`;
@@ -629,26 +685,18 @@ function calculateBudget() {
                 tempAssets -= cardDebt;
             }
         }
-        
-        let currentMargin = tempAssets - 20000;
-        if (currentMargin < minMargin) {
-            minMargin = currentMargin;
-            bottomDate = new Date(checkDate);
-        }
-        
         checkDate.setDate(checkDate.getDate() + 1);
     }
 
-    const diffTime = bottomDate.getTime() - today.getTime();
-    const daysToBottom = Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
-
-    let availableToday = 0;
-    if (minMargin >= 0) {
-        availableToday = Math.floor(minMargin / daysToBottom);
-    } else {
-        availableToday = Math.ceil(minMargin / daysToBottom);
-    }
+    // ユーザー指定の計算式
+    // 最後の出費予定日に残る残高 - 2万円
+    const minMargin = tempAssets - 20000;
     
+    // 今日からその日までの日数
+    const diffTime = maxSimulationDate.getTime() - today.getTime();
+    const daysToEnd = Math.max(1, Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1);
+
+    let availableToday = Math.floor(minMargin / daysToEnd);
     const availableThisWeek = availableToday * 7;
     const availableThisMonth = minMargin;
 
@@ -673,26 +721,43 @@ function calculateBudget() {
         elMonth.style.color = availableThisMonth < 0 ? '#e53e3e' : '';
     }
 
-    const daysLeft = lastDayOfMonth.getDate() - today.getDate() + 1;
+    // 「自由に使える」の横の日数表示を更新
+    if (document.getElementById('days-left-count')) {
+        document.getElementById('days-left-count').innerText = daysToEnd;
+    }
+
+    const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    const daysMonthEnd = lastDayOfMonth.getDate() - today.getDate() + 1;
     if (document.getElementById('days-left')) {
-        document.getElementById('days-left').innerText = daysLeft;
+        document.getElementById('days-left').innerText = daysMonthEnd;
     }
 
     if (document.getElementById('label-today-date')) {
         document.getElementById('label-today-date').innerText = `(${today.getMonth()+1}/${today.getDate()})`;
     }
-    
+
+    // 今週の支出計算 (金曜日始まりのサイクル)
     const currentDay = today.getDay(); 
     const distToFri = currentDay >= 5 ? currentDay - 5 : currentDay + 2;
     const friDate = new Date(today);
     friDate.setDate(today.getDate() - distToFri);
-    const thuDate = new Date(friDate);
-    thuDate.setDate(friDate.getDate() + 6);
-    if (document.getElementById('label-week-range')) {
-        document.getElementById('label-week-range').innerText = `(${friDate.getMonth()+1}/${friDate.getDate()}〜${thuDate.getMonth()+1}/${thuDate.getDate()})`;
-    }
-    if (document.getElementById('label-month-date')) {
-        document.getElementById('label-month-date').innerText = `(${lastDayOfMonth.getMonth()+1}/${lastDayOfMonth.getDate()}締)`;
+    friDate.setHours(0,0,0,0);
+    const friStr = friDate.toISOString().split('T')[0];
+
+    let weeklySpent = 0;
+    historyLogs.forEach(log => {
+        if (log.date >= friStr && log.type === 'expense' && !log.name.includes("差額調整")) {
+            weeklySpent += log.amount;
+        }
+    });
+    if (document.getElementById('actual-week-spent')) {
+        document.getElementById('actual-week-spent').innerText = `¥${weeklySpent.toLocaleString()}`;
+        // 目標を超えているかどうかの色付け
+        if (weeklySpent > availableThisWeek && availableThisWeek > 0) {
+            document.getElementById('actual-week-spent').style.color = '#feb2b2'; // 薄い赤
+        } else {
+            document.getElementById('actual-week-spent').style.color = '#9ae6b4'; // 薄い緑
+        }
     }
 }
 
@@ -911,7 +976,7 @@ function deleteHistoryItem(id) {
     renderHistory();
     checkOverduePlans();
     
-    alert(`「${log.name}」の履歴を削除し、金額を元に戻しました！`);
+    showToast(`履歴「${log.name}」を削除し、戻しました`);
 }
 
 function getAssetLabel(asset) {
